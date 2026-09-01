@@ -1,0 +1,12 @@
+# 8x8 dToF, the ZJU-L5 / VL53L5CX setting DEPTHOR targets.
+type: dtof_sim
+zones_h: 8
+zones_w: 8
+fov_fraction: 1.0
+peak_selection: strongest
+sigma_base_m: 0.010
+sigma_per_m: 0.012
+z_min: 0.2
+z_max: 4.0
+zone_dropout: 0.05
+fill_ratio: 0.6

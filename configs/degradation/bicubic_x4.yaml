@@ -1,0 +1,5 @@
+# The classic synthetic depth-SR protocol (DuCos --scale 4).
+type: bicubic_sr
+scale: 4
+mode: bicubic
+noisy: false

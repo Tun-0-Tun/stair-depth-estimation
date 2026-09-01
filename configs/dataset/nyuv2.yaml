@@ -1,0 +1,13 @@
+name: nyuv2
+loader: nyuv2
+root: data/raw/nyuv2
+split: test
+# "h5"  -> depth-completion layout (<root>/nyudepthv2/{train,val}/<scene>/*.h5)
+# "npy" -> depth-SR layout (test_images_v2.npy / test_depth.npy / test_minmax.npy)
+layout: h5
+min_depth: 0.001
+max_depth: 10.0
+eval:
+  # "eigen" to compare against completion papers, "border6" against DSR papers.
+  crop: eigen
+docs: docs/datasets.md#nyu-depth-v2

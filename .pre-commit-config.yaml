@@ -1,0 +1,55 @@
+# pre-commit install
+#
+# third_party/ is excluded everywhere: it is vendored upstream code and
+# reformatting it would make our submodules dirty and the diffs unreadable.
+exclude: '^(third_party/|notebooks/)'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: debug-statements
+      - id: check-added-large-files
+        # No data, weights or images in git. Splits are a few KB.
+        # uv.lock is legitimately ~1 MB and must be committed.
+        args: [--maxkb=512]
+        exclude: '^uv\.lock$'
+      # Note: no `no-commit-to-branch` hook. Branch policy lives in
+      # CONTRIBUTING.md; enforce it with a GitHub branch-protection rule, not
+      # with a local hook that blocks the initial commit and every hotfix.
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+
+  - repo: local
+    hooks:
+      # Rule 1 of CONTRIBUTING.md, enforced mechanically.
+      - id: single-metric-implementation
+        name: no metric implementations outside metrics/
+        entry: python scripts/check_single_metrics.py
+        language: system
+        types: [python]
+        pass_filenames: true

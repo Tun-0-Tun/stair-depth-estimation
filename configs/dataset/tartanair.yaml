@@ -1,0 +1,8 @@
+# STUB - the loader is not implemented yet; see data/loaders/tartanair.py for the TODO list.
+name: tartanair
+loader: tartanair
+root: data/raw/tartanair
+split: test
+eval:
+  crop: none
+docs: docs/datasets.md#tartanair

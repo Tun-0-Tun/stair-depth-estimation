@@ -1,0 +1,8 @@
+# STUB - the loader is not implemented yet; see data/loaders/tofdc.py for the TODO list.
+name: tofdc
+loader: tofdc
+root: data/raw/tofdc
+split: test
+eval:
+  crop: none
+docs: docs/datasets.md#tofdc

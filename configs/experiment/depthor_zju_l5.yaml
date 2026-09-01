@@ -1,0 +1,21 @@
+# Reproduce DEPTHOR's headline ZJU-L5 number with OUR metric code.
+# Cross-check target: docs/metrics_protocol.md#cross-check-against-published-numbers
+defaults:
+  - dataset: zju_l5
+  - model: depthor
+  - degradation: none
+
+seed: 0
+device: cuda            # DEPTHOR needs the BpOps CUDA extension
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "DEPTHOR v1 (not ++); real dToF input, no simulation"

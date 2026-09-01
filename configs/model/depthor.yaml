@@ -1,0 +1,12 @@
+name: depthor
+adapter: depthor
+available: true
+paper: "Xiang et al., DEPTHOR, ICCV 2025 (arXiv:2504.01596)"
+submodule: third_party/depthor
+variant: large            # large -> src/models/depthor.py, small -> depthor_s.py
+n_bins: 256
+checkpoint: checkpoints/depthor/depthor_zju_large.pt
+depth_anything_ckpt: checkpoints/depth_anything_v2_vits.pth
+# Requires the BpOps CUDA extension (BP-Net, CUDA 12.1). There is no CPU/MPS build.
+# `python scripts/run_baseline.py ... --check` prints the exact setup steps.
+docs: docs/metrics_protocol.md#baseline-availability

@@ -1,0 +1,24 @@
+# End-to-end pipeline check: no downloads, no weights, runs on a laptop in ~10 s.
+# `python scripts/run_baseline.py experiment=smoke`
+defaults:
+  - dataset: synthetic_stairs
+  - model: nn_fill
+  - degradation: astra2_uncalibrated
+
+seed: 0
+device: cpu
+dataset:
+  n_samples: 4
+  height: 240
+  width: 320
+eval:
+  crop: none
+  pooling: image
+  max_samples: null
+runtime:
+  measure: true
+  warmup: 2
+  iters: 5
+tracking:
+  backend: none
+notes: "smoke test - not a result"

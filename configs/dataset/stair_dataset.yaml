@@ -1,0 +1,8 @@
+# STUB - the loader is not implemented yet; see data/loaders/stair_dataset.py for the TODO list.
+name: stair_dataset
+loader: stair_dataset
+root: data/raw/rgbd_stair
+split: test
+eval:
+  crop: none
+docs: docs/datasets.md#stair_dataset

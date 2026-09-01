@@ -1,0 +1,12 @@
+name: arkitscenes
+loader: arkitscenes
+root: data/raw/arkitscenes
+split: val
+min_confidence: 0        # 0 keep all, 1 medium+, 2 high only
+frame_stride: 10
+target_size: [480, 640]
+min_depth: 0.1
+max_depth: 10.0
+eval:
+  crop: none
+docs: docs/datasets.md#arkitscenes

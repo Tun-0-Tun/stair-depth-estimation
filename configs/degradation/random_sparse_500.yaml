@@ -1,0 +1,4 @@
+# NYU-DC protocol: 500 uniformly random exact samples.
+type: random_sparse
+n_samples: 500
+noise_sigma_m: 0.0

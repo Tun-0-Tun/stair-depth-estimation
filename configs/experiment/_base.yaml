@@ -1,0 +1,17 @@
+# Shared defaults. Every experiment file copies this block; it is not a Hydra
+# base config on purpose - one experiment file must be readable on its own.
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image        # image | pixel  (image = the convention papers report)
+  max_samples: null
+  min_depth: null       # null -> take the dataset's own range
+  max_depth: null
+runtime:
+  measure: true
+  warmup: 5
+  iters: 20
+tracking:
+  backend: none         # none | wandb | mlflow
+  project: stair-depth-estimation

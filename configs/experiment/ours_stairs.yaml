@@ -1,0 +1,22 @@
+# Our method on our own Astra 2 stair captures. Requires the astra2_custom
+# loader (stub) and a trained checkpoint.
+defaults:
+  - dataset: astra2_custom
+  - model: ours
+  - degradation: none
+
+seed: 0
+device: auto
+model:
+  checkpoint: checkpoints/ours/latest.pt
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.6
+  max_depth: 8.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none

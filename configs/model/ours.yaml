@@ -1,0 +1,13 @@
+name: ours
+adapter: ours
+available: true
+checkpoint: null
+allow_random_init: false   # true only for plumbing checks; numbers are meaningless
+net:
+  base_channels: 32
+  depth_levels: 4
+  refine_iters: 6
+  refine_kernel: 3
+  use_confidence_gate: true
+  use_edge_aware_refine: true
+  mono_features: false

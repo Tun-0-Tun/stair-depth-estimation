@@ -1,0 +1,88 @@
+# ---------------------------------------------------------------------------
+# Data & weights - NEVER commit these. Splits (data/splits/) ARE committed.
+# ---------------------------------------------------------------------------
+data/raw/
+data/processed/
+data/cache/
+datasets/
+checkpoints/
+*.pth
+*.pth.tar
+*.ckpt
+*.onnx
+*.engine
+*.safetensors
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.pkl
+*.mat
+*.bag
+*.bin
+
+# Allow small committed artefacts that would otherwise be caught above
+!data/splits/**
+!tests/assets/**
+
+# ---------------------------------------------------------------------------
+# Experiment outputs
+# ---------------------------------------------------------------------------
+experiments/runs/
+outputs/
+multirun/
+wandb/
+mlruns/
+lightning_logs/
+tb_logs/
+*.log
+
+# experiments/results/ IS tracked: the summary tables must be shared.
+# Per-run raw dumps inside it are not.
+experiments/results/raw/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.python-version
+
+# ---------------------------------------------------------------------------
+# Tooling
+# ---------------------------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+.hypothesis/
+
+# ---------------------------------------------------------------------------
+# Secrets / local config
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.secret
+
+# ---------------------------------------------------------------------------
+# OS / editors
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp

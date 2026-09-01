@@ -1,0 +1,2 @@
+# Sanity check: the input IS the ground truth, so every metric must be perfect.
+type: identity

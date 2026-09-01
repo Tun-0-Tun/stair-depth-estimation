@@ -1,0 +1,5 @@
+name: nn_fill
+adapter: nn_fill
+available: true
+smooth_sigma_px: 0.0
+# Reference floor for depth completion (nearest-measurement fill, no RGB guidance).

@@ -1,0 +1,18 @@
+# Orbbec Astra 2 active-stereo model, DATASHEET DEFAULTS - NOT CALIBRATED.
+# Any result produced with this file must carry "uncalibrated" in the notes
+# column. Calibration procedure: docs/design_doc.md#astra-2-noise-model.
+type: active_stereo_astra2
+baseline_m: 0.040
+focal_px: 570.0
+subpixel_bits: 3
+z_min: 0.6
+z_max: 8.0
+sigma_disp_px: 0.08
+occlusion: true
+edge_fatten_px: 2
+edge_invalid_prob: 0.35
+depth_edge_threshold: 0.05
+dropout_base: 0.02
+dropout_z_ref: 1.5
+dropout_blob_sigma_px: 6.0
+dropout_max: 0.85

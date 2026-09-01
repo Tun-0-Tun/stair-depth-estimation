@@ -1,0 +1,24 @@
+# The classic synthetic x4 depth-SR protocol on NYUv2.
+defaults:
+  - dataset: nyuv2
+  - model: ducos
+  - degradation: bicubic_x4
+
+seed: 0
+device: auto
+dataset:
+  layout: npy
+model:
+  checkpoint: checkpoints/ducos/x4.pth.tar
+  scale: 4
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none

@@ -1,0 +1,11 @@
+name: depthor_plus_plus
+adapter: depthor_plus_plus
+available: false
+unavailable_reason: >
+  DEPTHOR++ (arXiv:2509.26498) has no public code or weights as of 2026-09-01.
+  The authors' repository https://github.com/ShadowBbBb/Depthor ships DEPTHOR v1
+  (ICCV 2025) only. Use model=depthor and label the row DEPTHOR-v1, or obtain a
+  release from the authors. Do NOT report v1 numbers in a DEPTHOR++ row.
+paper: "Xiang et al., DEPTHOR++, 2025 (arXiv:2509.26498)"
+checkpoint: null
+docs: docs/metrics_protocol.md#baseline-availability

@@ -1,0 +1,14 @@
+# Procedural stairs. CI / debugging only - never report a number from this.
+name: synthetic_stairs
+loader: synthetic_stairs
+root: "."
+split: test
+n_samples: 8
+height: 480
+width: 640
+n_steps: 6
+min_depth: 0.3
+max_depth: 8.0
+strict: false
+eval:
+  crop: none

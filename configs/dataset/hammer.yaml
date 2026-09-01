@@ -1,0 +1,18 @@
+name: hammer
+loader: hammer
+root: data/raw/hammer
+split: test
+# d435 = active stereo (closest to the Astra 2), l515 = dToF, tof = Lucid I-ToF
+input_sensor: d435
+rgb_subdir: rgb
+gt_subdir: gt
+input_subdir: null       # defaults to input_sensor
+rgb_glob: "*.png"
+min_depth: 0.1
+max_depth: 5.0
+eval:
+  crop: none
+# The archive's internal layout is undocumented upstream: run
+#   python scripts/download_data.py --dataset hammer --inspect
+# and correct the *_subdir keys above before the first real run.
+docs: docs/datasets.md#hammer

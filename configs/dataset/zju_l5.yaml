@@ -1,0 +1,12 @@
+name: zju_l5
+loader: zju_l5
+root: data/raw/ZJUL5
+split: test
+index_file: data.json
+# "center" reproduces DEPTHOR's dtof_to_sparse_depth exactly (one pixel/zone).
+footprint: center
+min_depth: 0.001
+max_depth: 10.0
+eval:
+  crop: none
+docs: docs/datasets.md#zju-l5

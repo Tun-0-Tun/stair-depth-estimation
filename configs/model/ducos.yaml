@@ -1,0 +1,11 @@
+name: ducos
+adapter: ducos
+available: true
+paper: "Yan et al., DuCos, ICCV 2025 (arXiv:2503.04171)"
+submodule: third_party/ducos
+scale: 4
+model_name: DuCos
+# x4.pth.tar (synthetic x4) | RealRGBDD.pth.tar | RealTOFDSR.pth.tar | Compressx8.pth.tar
+checkpoint: checkpoints/ducos/x4.pth.tar
+depth_anything_ckpt: checkpoints/depth_anything_v2_vits.pth
+docs: docs/metrics_protocol.md#baseline-availability

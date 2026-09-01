@@ -1,0 +1,97 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stair-depth-estimation"
+version = "0.1.0"
+description = "Depth completion / super-resolution for staircase scenes on the Orbbec Astra 2"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary - joint SOW with Huawei" }
+
+# Kept small on purpose: our own code and tests run on just these.
+# Everything the vendored baselines need lives in the `baselines` group below.
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "pillow>=10.0",
+    "pyyaml>=6.0",
+    "pandas>=2.0",
+    "tqdm>=4.65",
+]
+
+[dependency-groups]
+# `uv sync` installs dev by default; add --group baselines to run DEPTHOR/DuCos.
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "black>=24.0",
+    "isort>=5.13",
+    "pre-commit>=3.6",
+]
+
+# Dependencies of third_party/depthor and third_party/ducos.
+#
+# NOT installable here: DEPTHOR's CSPN++ refinement imports `BpOps`, a CUDA
+# extension from BP-Net that builds against CUDA 12.1 only. There is no CPU or
+# MPS build, so DEPTHOR does not run on a Mac:
+#     git clone https://github.com/kakaxi314/BP-Net && cd BP-Net && python setup.py install
+baselines = [
+    "timm>=0.9",               # Depth Anything V2 backbone
+    "opencv-python-headless",  # depth_anything_v2/dpt.py imports cv2 at module level
+    "h5py>=3.8",               # NYUv2 (.h5 pack) and ZJU-L5 loaders
+    "huggingface-hub>=0.20",   # DuCos checkpoints
+    "accelerate>=0.25",        # DEPTHOR training entry point
+]
+
+# Optional experiment trackers. Never a hard dependency - not everyone has an account.
+tracking = ["wandb>=0.16", "mlflow>=2.10"]
+notebooks = ["jupyterlab>=4.0", "matplotlib>=3.7", "seaborn>=0.13"]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.setuptools]
+packages = ["baselines", "data", "metrics", "models", "utils"]
+
+# third_party/ is vendored upstream code. Every formatter and linter below must
+# exclude it: reformatting it makes the submodule working tree dirty and buries
+# any real upstream diff under whitespace. pre-commit excludes it globally too,
+# but these settings also protect a manual `black .` / `isort .`.
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+extend-exclude = '''/(third_party|notebooks|\.venv)/'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+known_first_party = ["baselines", "data", "metrics", "models", "utils", "scripts"]
+extend_skip_glob = ["third_party/*", "notebooks/*", ".venv/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# third_party/ is vendored upstream code: never lint or reformat it.
+extend-exclude = ["third_party", "notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",    # line length is black's job
+    "B008",    # function call in a default arg - fine for our dataclass configs
+    "RUF001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+"scripts/*" = ["E402"]  # _bootstrap must be imported before anything else
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]

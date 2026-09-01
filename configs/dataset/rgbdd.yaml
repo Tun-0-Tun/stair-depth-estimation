@@ -1,0 +1,11 @@
+name: rgbdd
+loader: rgbdd
+root: data/raw/RGBDD
+split: test
+downsample: real         # "real" = genuine LR ToF frame, "sync" = bicubic from GT
+scale: 4
+min_depth: 0.1
+max_depth: 10.0
+eval:
+  crop: border6          # the DSR convention DuCos reports with
+docs: docs/datasets.md#rgb-d-d
