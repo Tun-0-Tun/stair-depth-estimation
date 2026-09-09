@@ -92,7 +92,7 @@ explicitly and explain why the number moved.
 | a sensor model | `data/degradation/<name>.py`, `@register_degradation` | add `configs/degradation/<name>.yaml`, add a case to `test_degradation_contract` |
 | a baseline | submodule in `third_party/`, adapter in `baselines/` | add `configs/model/<name>.yaml`, implement `availability()` |
 | a model block | `models/modules/<name>.py` | make it switchable from `configs/model/ours.yaml` so it can be ablated |
-| an experiment | `configs/experiment/<name>.yaml` | one file must fully describe the run |
+| an experiment | `configs/experiment/<name>.yaml` | one file must fully describe the run — see [docs/running.md](docs/running.md) |
 | a metric | `metrics/depth_metrics.py` **only** | add an analytic test with the expected value derived by hand |
 | exploration | `notebooks/` | nothing in a notebook is part of the pipeline; move it into a module before relying on it |
 

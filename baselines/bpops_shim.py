@@ -34,7 +34,7 @@ import torch.nn.functional as F
 __all__ = ["Conv2dLocal_F", "Conv2dLocal_B", "install"]
 
 
-def Conv2dLocal_F(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:  # noqa: N802 - upstream name
+def Conv2dLocal_F(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
     """Local convolution: every pixel gets its own kernel.
 
     ``x``: (B, Ci, H, W).  ``w``: (B, Ci*K*K, H, W), window-major within each
@@ -52,7 +52,7 @@ def Conv2dLocal_F(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:  # noqa: N8
     return (patches * w.view(b, ci, k * k, h, width)).sum(dim=2)
 
 
-def Conv2dLocal_B(  # noqa: N802 - upstream name
+def Conv2dLocal_B(
     x: torch.Tensor, w: torch.Tensor, grad_out: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Gradients, obtained by differentiating the forward above.

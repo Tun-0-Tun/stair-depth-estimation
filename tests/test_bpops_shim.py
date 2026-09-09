@@ -21,10 +21,10 @@ from baselines.bpops_shim import Conv2dLocal_B, Conv2dLocal_F  # noqa: E402
 def reference_conv2d_local_f(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """Transcription of BP-Net's conv2d_kernel_lf, index for index.
 
-        for i in -(K-1)/2 .. (K-1)/2:
-          for j in -(K-1)/2 .. (K-1)/2:
-            if out of bounds: continue
-            result += x[b, c, r+i, k+j] * y[b, c*K*K + (i+K//2)*K + (j+K//2), r, k]
+    for i in -(K-1)/2 .. (K-1)/2:
+      for j in -(K-1)/2 .. (K-1)/2:
+        if out of bounds: continue
+        result += x[b, c, r+i, k+j] * y[b, c*K*K + (i+K//2)*K + (j+K//2), r, k]
     """
     b, ci, n1, n2 = x.shape
     k = int(round((y.shape[1] // ci) ** 0.5))

@@ -108,6 +108,9 @@ uv run python scripts/train.py --dataset minjiang --degradation astra2_uncalibra
 A benchmark cell that couldn't run shows up as `NOT RUN: <reason>` rather than
 disappearing.
 
+Full recipes — overrides, choosing a degradation, reading the output row,
+what to do when it fails: **[docs/running.md](docs/running.md)**.
+
 ## Baseline status
 
 | | Code | Weights | Runs on |
@@ -145,6 +148,7 @@ by `baselines/bpops_shim.py` (checked against BP-Net's kernel). Runs are tagged
 
 ## Docs
 
+* [docs/running.md](docs/running.md) — how to run a given model on given data, overrides, reading results
 * [docs/datasets.md](docs/datasets.md) — external data folder, per-dataset layout, sample contract, splits
 * [docs/metrics_protocol.md](docs/metrics_protocol.md) — metric definitions, FPS protocol, baseline availability
 * [docs/design_doc.md](docs/design_doc.md) — the problem, architecture, Astra 2 noise model and its calibration
