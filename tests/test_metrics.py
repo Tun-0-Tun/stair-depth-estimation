@@ -211,3 +211,27 @@ def test_runtime_measurement_reports_a_plausible_fps():
     assert rt.fps > 0
     assert rt.latency_ms_median >= 0
     assert rt.device_info["device"] == "cpu"
+
+
+def test_group_override_does_not_discard_key_overrides():
+    """`--dataset X` replaces the whole group, so it must be applied first.
+
+    Applied the other way round, `dataset.root=/somewhere` is silently dropped
+    and the run reads a different dataset than the command line asked for --
+    which is how you get a number attributed to the wrong data.
+    """
+    import argparse
+    import sys
+
+    from utils.misc import REPO_ROOT
+
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import run_baseline
+
+    args = argparse.Namespace(
+        model="nn_fill", dataset="void_stairs", degradation=None, experiment=None
+    )
+    cfg = run_baseline.compose(args, ["dataset.root=/tmp/elsewhere", "dataset.max_samples=7"])
+    assert cfg.dataset["root"] == "/tmp/elsewhere"
+    assert cfg.dataset["max_samples"] == 7
+    assert cfg.dataset["loader"] == "void_stairs"

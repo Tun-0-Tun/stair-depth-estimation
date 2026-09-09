@@ -16,20 +16,18 @@ import numpy as np
 import pytest
 
 from data.degradation import build_degradation
-from data.loaders import DATASET_REGISTRY, IMPLEMENTED, build_dataset, validate_sample
-from data.loaders._stub import NotImplementedDatasetError
+from data.loaders import DATASET_REGISTRY, build_dataset, validate_sample
 from utils.config import CONFIG_ROOT, load_config
 
 
 def _try_build(key: str, **overrides):
     """Build a loader from its committed config, or skip if the data is absent."""
     cfg = dict(load_config("dataset", key))
-    deg_key = "astra2_uncalibrated" if cfg.get("loader") == "synthetic_stairs" else None
-    degradation = build_degradation(dict(load_config("degradation", deg_key))) if deg_key else None
+    # Datasets that ship no degraded input (NYUv2, MinJiang, synthetic) need a
+    # sensor model to produce one; the ones that do ship one ignore it.
+    degradation = build_degradation(dict(load_config("degradation", "astra2_uncalibrated")))
     try:
         return build_dataset(cfg, degradation=degradation, **overrides)
-    except NotImplementedDatasetError as exc:
-        pytest.skip(f"{key}: loader is a stub ({exc})")
     except (FileNotFoundError, RuntimeError) as exc:
         pytest.skip(f"{key}: data not available here ({str(exc).splitlines()[0]})")
 
@@ -148,21 +146,12 @@ def test_identity_degradation_round_trips_exactly():
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("key", sorted(IMPLEMENTED))
-def test_implemented_loader_contract(key):
+@pytest.mark.parametrize("key", sorted(set(DATASET_REGISTRY) - {"synthetic_stairs"}))
+def test_real_loader_contract(key):
+    """Runs where the shared data folder has the dataset; skips where it does not."""
     ds = _try_build(key, max_samples=2, strict=True)
     assert len(ds) > 0, f"{key}: built but empty"
     validate_sample(ds[0], f"{key}[0]")
-
-
-@pytest.mark.parametrize("key", sorted(set(DATASET_REGISTRY) - set(IMPLEMENTED)))
-def test_stub_loader_fails_loudly_with_instructions(key):
-    """A stub must say what to implement, not return an empty dataset."""
-    cfg = dict(load_config("dataset", key))
-    with pytest.raises(NotImplementedDatasetError) as exc:
-        build_dataset(cfg, strict=False)
-    message = str(exc.value)
-    assert "TODO" in message and "data/loaders" in message
 
 
 def test_every_registered_dataset_has_a_config():

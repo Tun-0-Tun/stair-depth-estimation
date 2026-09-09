@@ -69,13 +69,16 @@ def compose(args: argparse.Namespace, overrides: list[str]) -> Config:
     }
     experiment = args.experiment or named.pop("experiment", None)
 
+    # A group override (`dataset=void_stairs`) REPLACES that whole group, so it
+    # has to be applied before any key override inside it (`dataset.root=...`),
+    # or the key override is silently discarded.
     group_flags = [
         f"{g}={getattr(args, g)}" for g in ("model", "dataset", "degradation") if getattr(args, g)
     ]
     rest = [o for o in overrides if not o.startswith("experiment=")]
 
     if experiment:
-        return load_experiment(experiment, [*rest, *group_flags])
+        return load_experiment(experiment, [*group_flags, *rest])
 
     if not (args.model or any(o.startswith("model=") for o in rest)):
         raise SystemExit(
@@ -86,7 +89,7 @@ def compose(args: argparse.Namespace, overrides: list[str]) -> Config:
     base = _read_yaml(CONFIG_ROOT / "experiment" / "_base.yaml")
     base.setdefault("degradation", {"type": "none"})
     base["experiment_name"] = "adhoc"
-    return Config(apply_overrides(base, [*rest, *group_flags]))
+    return Config(apply_overrides(base, [*group_flags, *rest]))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

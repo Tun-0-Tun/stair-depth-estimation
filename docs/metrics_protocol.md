@@ -166,20 +166,28 @@ Options, in the order we recommend them:
    it must live in `models/`, never in `baselines/` — a re-implementation is our
    work, not the authors', and mislabelling it would be misconduct.
 
-### DEPTHOR v1 — runnable, but only on CUDA
+### DEPTHOR v1 — runnable anywhere, via a shim
 
 DEPTHOR's CSPN++ refinement does `import BpOps`, a CUDA extension from
 [BP-Net](https://github.com/kakaxi314/BP-Net) that builds against **CUDA 12.1
-only**. There is no CPU or MPS path, so this baseline **cannot run on a Mac**.
-Everything else in the adapter is verified working on any machine (the
-Depth-Anything-V2 path patch included).
+only** — no CPU or MPS build exists.
 
-On the CUDA box:
+[`baselines/bpops_shim.py`](../baselines/bpops_shim.py) supplies that one
+primitive (a local, per-pixel convolution) in portable PyTorch, transcribed from
+BP-Net's own `conv2d_kernel_lf`. It is checked against a literal transcription
+of that CUDA loop in `tests/test_bpops_shim.py`, and the ZJU-L5 reproduction
+above was produced with it.
 
-```bash
-git clone https://github.com/kakaxi314/BP-Net && cd BP-Net && python setup.py install
-python scripts/run_baseline.py --model depthor --dataset zju_l5 --check
-```
+It is still *our* code, not the authors', so:
+
+* the adapter prints a warning when it activates,
+* `bpops` appears in the run record as `shim` or `cuda`,
+* on a CUDA machine install the real extension and it takes precedence:
+  `git clone https://github.com/kakaxi314/BP-Net && cd BP-Net && python setup.py install`
+
+Weights: both `Depthor-ZJU-Large` and `-Small` download with `gdown` from the
+Google Drive links in `third_party/depthor/README.md` — see
+[datasets.md](datasets.md#checkpoints).
 
 ### DuCos — runnable
 
@@ -190,38 +198,45 @@ on CPU, through `scripts/run_baseline.py`. No CUDA-only dependencies.
 
 ## Cross-check against published numbers
 
-**Status: not yet performed — blocked on the datasets, not on the code.**
+### DEPTHOR v1 on ZJU-L5 — reproduced (2026-09-09)
 
-The comparison the SOW asks for requires ZJU-L5 (manual download), RGB-D-D
-(access by request) and the DEPTHOR checkpoints (Google Drive). None of them
-can be fetched by a script, and none are on the machine this repo was built on.
-The harness is ready; running it is a data-access task, not a code task.
+Full 527-frame test split, our loader, our metric code, `bpops="shim"`, CPU.
+Reference: DEPTHOR paper (arXiv:2504.01596v2) **Table 2**, row *Ours-Large*,
+RMSE in metres.
 
-### What to run
+| Metric | Published | Ours | Δ | Within ±10%? |
+|---|---|---|---|---|
+| RMSE | 0.350 | 0.3501 | +0.03% | ✅ |
+| Rel (AbsRel) | 0.075 | 0.0759 | +1.2% | ✅ |
+| δ1 | 0.933 | 0.9321 | −0.1% | ✅ |
 
-```bash
-# DEPTHOR v1 on its headline benchmark (needs CUDA + BpOps)
-python scripts/run_baseline.py experiment=depthor_zju_l5
+Context from the same run — the reference floors on the identical split:
 
-# DuCos on its real-world benchmark
-python scripts/run_baseline.py experiment=ducos_rgbdd_real
+| Method | AbsRel | RMSE | δ1 | FPS (CPU) |
+|---|---|---|---|---|
+| DEPTHOR-Large | 0.0759 | 0.3501 | 0.9321 | 1.19 |
+| nn_fill | 0.1223 | 0.5775 | 0.8349 | 157 |
+| bicubic | 0.1222 | 0.5771 | 0.8352 | 1816 |
+| DuCos (x4 ckpt) | 0.1304 | 0.5526 | 0.8311 | — |
 
-# DuCos on the synthetic x4 protocol
-python scripts/run_baseline.py experiment=ducos_nyuv2_x4
-```
+This single result validates four things at once, which is why it was worth
+chasing: the DEPTHOR adapter, the ZJU-L5 loader (including the zone-centre
+sparse construction), our unified metric implementation, and the BpOps shim.
+Treat it as the regression anchor — if a change moves this row, the change is
+wrong until proven otherwise.
 
-### Reference numbers to compare against
+DuCos scores at the bicubic floor here because ZJU-L5's input is 64 points in a
+480×640 frame (0.02% dense). It is a super-resolution model being handed a
+completion problem; the number is correct and the comparison is not meaningful.
+Its own benchmarks are the SR ones.
 
-Fill this table in as the runs complete. Take the published values from the
-papers' own tables, and record the exact table/row you took them from.
+### Still to do
 
-| Method | Dataset | Metric | Published | Ours | Δ | Within ±10%? |
-|---|---|---|---|---|---|---|
-| DEPTHOR v1 | ZJU-L5 | RMSE | _(paper Tab. ?)_ | | | |
-| DEPTHOR v1 | ZJU-L5 | AbsRel | | | | |
-| DEPTHOR v1 | ZJU-L5 | δ1 | | | | |
-| DuCos | RGB-D-D (real) | RMSE | | | | |
-| DuCos | NYUv2 ×4 | RMSE | | | | |
+| Method | Dataset | Status |
+|---|---|---|
+| DuCos | RGB-D-D (real) | dataset not obtained (access by request) |
+| DuCos | NYUv2 ×4 | dataset not obtained |
+| DEPTHOR | Mirror3D-NYU | no loader yet |
 
 ### Expected sources of disagreement
 
@@ -231,14 +246,15 @@ a number by more than 10% on their own:
 1. **Unit convention.** DuCos reports RMSE in centimetres on min-max normalised
    depth; ours is in metres on absolute depth. These are not off by a constant
    factor — the normalisation is per image, so the ratio varies per sample.
-   Converting their table to ours requires their per-image min/max.
 2. **δ thresholds.** DuCos's "DEL_105 / DEL_115 / DEL_125" are 1.05 / 1.15 /
    1.25 — only their third column is our δ1.
 3. **Crop.** `border6` vs `eigen` vs none moves RMSE by a few percent.
 4. **Depth range.** A `max_depth` of 8 vs 10 changes which pixels are scored.
-5. **Checkpoint.** DuCos ships a different checkpoint per scale and per dataset;
-   `x4.pth.tar` on RGB-D-D is not what their table reports.
-6. **Split.** See [datasets.md](datasets.md#split-protocol).
+5. **Subset.** Our first ZJU-L5 attempt used 20 of 527 frames and gave
+   RMSE 0.280 against a published 0.350 — a 20% "disagreement" that was purely
+   the subset. Run the full split before comparing.
+6. **Checkpoint.** DuCos ships a different checkpoint per scale and per dataset.
+7. **Split.** See [datasets.md](datasets.md#split-protocol).
 
 ### Rule for recording the outcome
 
@@ -246,8 +262,6 @@ Write the result here **whether or not it matches**. If a number is outside
 ±10%, the entry must name the cause or say explicitly that the cause is
 unknown. "We could not reproduce it and do not know why" is a legitimate and
 useful finding; quietly dropping the row is not.
-
----
 
 ## Known-good anchors
 

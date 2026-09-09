@@ -1,6 +1,8 @@
 [submodule "third_party/depthor"]
 	path = third_party/depthor
 	url = https://github.com/ShadowBbBb/Depthor.git
+	ignore = dirty
 [submodule "third_party/ducos"]
 	path = third_party/ducos
 	url = https://github.com/yanzq95/DuCos.git
+	ignore = dirty

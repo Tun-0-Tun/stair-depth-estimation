@@ -1,6 +1,6 @@
 name: zju_l5
 loader: zju_l5
-root: data/raw/ZJUL5
+root: ZJUL5
 split: test
 index_file: data.json
 # "center" reproduces DEPTHOR's dtof_to_sparse_depth exactly (one pixel/zone).

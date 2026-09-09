@@ -88,7 +88,7 @@ explicitly and explain why the number moved.
 
 | You are adding… | Put it in | Then |
 |---|---|---|
-| a dataset | `data/loaders/<name>.py`, `@register_dataset` | add `configs/dataset/<name>.yaml`, add to `IMPLEMENTED`, document in `docs/datasets.md`, commit the split |
+| a dataset | `data/loaders/<name>.py`, `@register_dataset` | add `configs/dataset/<name>.yaml`, add its layout to `scripts/check_data.py` and `docs/datasets.md`, commit the split |
 | a sensor model | `data/degradation/<name>.py`, `@register_degradation` | add `configs/degradation/<name>.yaml`, add a case to `test_degradation_contract` |
 | a baseline | submodule in `third_party/`, adapter in `baselines/` | add `configs/model/<name>.yaml`, implement `availability()` |
 | a model block | `models/modules/<name>.py` | make it switchable from `configs/model/ours.yaml` so it can be ablated |

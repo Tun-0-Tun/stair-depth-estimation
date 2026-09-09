@@ -1,12 +1,18 @@
-# Reproduce DEPTHOR's headline ZJU-L5 number with OUR metric code.
-# Cross-check target: docs/metrics_protocol.md#cross-check-against-published-numbers
+# Regression anchor: reproduces DEPTHOR's published ZJU-L5 row.
+# Paper (arXiv:2504.01596v2) Tab. 2, "Ours-Large": RMSE 0.350, Rel 0.075, d1 0.933.
+# Verified 2026-09-09 on the full 527-frame test split, CPU, bpops=shim:
+#   RMSE 0.3501, Rel 0.0759, d1 0.9321  -> all within 1.2%.
+# If this moves, something is broken. See docs/metrics_protocol.md.
 defaults:
   - dataset: zju_l5
   - model: depthor
   - degradation: none
 
 seed: 0
-device: cuda            # DEPTHOR needs the BpOps CUDA extension
+device: auto            # CUDA uses the real BpOps; elsewhere the shim
+model:
+  checkpoint: checkpoints/depthor/depthor_zju_large.pt
+  variant: large
 eval:
   crop: none
   pooling: image

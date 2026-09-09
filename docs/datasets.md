@@ -1,290 +1,254 @@
 # Datasets
 
-Every dataset we benchmark on, what it actually contains, how to get it, and
-where it is used in the literature we are being compared against.
-
-**Nothing in this table is committed to git.** Raw data lives under `data/raw/`
-(git-ignored). The only data artefacts in the repo are the split files in
-`data/splits/`, which are small and which must be identical for all three of us.
+Datasets are big and shared between several people, so they live in **one
+external folder**, outside the repo. Everyone points the same environment
+variable at their own copy:
 
 ```bash
-python scripts/download_data.py --list              # what is on disk
-python scripts/download_data.py --dataset zju_l5    # fetch, or print manual steps
-python scripts/download_data.py --verify            # check every root at once
+export STAIR_DATA_ROOT=/path/to/shared/data     # put it in your shell rc
+python scripts/check_data.py --load             # does my copy match the layout?
 ```
 
----
+Configs name datasets *relatively* (`root: void_1500`), so the same
+`configs/dataset/*.yaml` works on every machine. An absolute `root:` overrides
+the variable if you need a one-off. Default when unset: `<repo>/../data`.
+
+Nothing but the split files in `data/splits/` ever goes into git.
+
+## Expected layout of the shared folder
+
+```
+$STAIR_DATA_ROOT/
+├── void_1500/           # VOID, stair sequences        -> loader void_stairs
+├── MinJiang-Dataset/    # dual-view RGB-D on stairs    -> loader minjiang
+├── nyuv2/               # NYU Depth v2                 -> loader nyuv2
+├── ZJUL5/               # ZJU-L5, real dToF            -> loader zju_l5
+└── hammer/              # HAMMER, multi-sensor         -> loader hammer
+```
+
+Folder names are what `scripts/check_data.py` and the configs expect. Rename
+yours or change `root:` in the config — but pick one and keep it the same for
+all three of us, because a split file is a list of paths.
 
 ## Overview
 
-| Dataset | Role | Input modality | RGB size | Depth size | Depth source | GT source | Loader |
-|---|---|---|---|---|---|---|---|
-| [NYU Depth v2](#nyu-depth-v2) | benchmark, pre-training | GT only (simulate) | 640×480 | 640×480 | Kinect v1 (structured light) | Levin-colourisation filled Kinect | `nyuv2` ✅ |
-| [ARKitScenes](#arkitscenes) | benchmark (real LR) | native LR | 1920×1440 | LR 256×192, HR 1920×1440 | Apple lidar (dToF) | high-res fused depth | `arkitscenes` ✅ |
-| [ZJU-L5](#zju-l5) | **DEPTHOR headline benchmark** | native sparse | 640×480 | 8×8 zones | ST VL53L5CX dToF | stereo reconstruction | `zju_l5` ✅ |
-| [HAMMER](#hammer) | **sensor-gap study** | native sparse | 1224×1024 (pol.) | per-sensor | D435 active stereo / L515 dToF / Helios I-ToF | laser-accurate | `hammer` ✅ |
-| [RGB-D-D](#rgb-d-d) | **DuCos real benchmark** | native LR | 512×384 | LR 192×144, HR 512×384 | Huawei P30 Pro ToF | Lucid Helios | `rgbdd` ✅ |
-| [Mirror3D-NYU](#mirror3d-nyu) | DEPTHOR++ hard case | GT only | 640×480 | 640×480 | Kinect v1 | manually corrected mirrors | ⬜ TODO |
-| [Hypersim](#hypersim) | **DEPTHOR training set** | GT only (simulate) | 1024×768 | 1024×768 | rendered | perfect (ray distance) | `hypersim` ⬜ stub |
-| [TartanAir](#tartanair) | pre-training, stair scenes | GT only (simulate) | 640×480 | 640×480 | rendered (AirSim) | perfect | `tartanair` ⬜ stub |
-| [TOFDC / TOFDSR](#tofdc--tofdsr) | DuCos real benchmark | native LR | 512×384 | 512×384 | smartphone dToF | structured light | `tofdc` ⬜ stub |
-| [RGB-D Stair Dataset](#rgb-d-stair-dataset) | **stair domain** | TBD | TBD | TBD | consumer RGB-D | TBD | `stair_dataset` ⬜ stub |
-| [Astra 2 (ours)](#our-astra-2-captures) | **acceptance target** | native sparse | 640×480 | 640×480 | Orbbec Astra 2 (active stereo) | TBD — see below | `astra2_custom` ⬜ stub |
+| Dataset | Role | Input | RGB | Depth | Depth encoding | GT source |
+|---|---|---|---|---|---|---|
+| [VOID](#void) | **primary stair benchmark** | real sparse (~1500 pts) | 640×480 | 640×480 | uint16 **/ 256** → m | dense reference |
+| [MinJiang](#minjiang) | stair training / qualitative | none (simulate) | 640×480 | 640×480 | uint16 mm | ⚠ the sensor itself |
+| [NYUv2](#nyu-depth-v2) | general benchmark | none (simulate) | 640×480 | 640×480 | float m / normalised | filled Kinect |
+| [ZJU-L5](#zju-l5) | **DEPTHOR benchmark** | real 8×8 dToF | 640×480 | 8×8 zones | float m | stereo reconstruction |
+| [HAMMER](#hammer) | **sensor-gap study** | real, per sensor | 1224×1024 | per sensor | uint16 mm | laser |
+| `synthetic_stairs` | CI only | generated | any | any | — | generated |
 
-✅ implemented · ⬜ stub (contract + TODO list in the loader file)
-
-Sizes marked TBD are ones we have not verified against the actual download yet;
-fill them in when you first unpack the archive, and do not guess.
+"Input: none (simulate)" means the dataset ships only ground truth, so a
+degradation model from `configs/degradation/` produces the network input.
 
 ---
 
-## Split protocol
+## VOID
 
-Splits are frozen as JSON in `data/splits/<dataset>/<split>.json`:
+`root: void_1500` · loader `void_stairs` · [github.com/alexklwong/void-dataset](https://github.com/alexklwong/void-dataset)
 
-```json
-{"dataset": "zju_l5", "split": "test", "ids": ["theater/1645696174.476698.h5", "..."]}
+The closest public analogue of our task: a **real** sparse depth input — points
+tracked by visual-inertial odometry, not a simulation — with dense ground truth,
+on real staircases. Four stair sequences (`stairs0`, `stairs1`, `stairs3`,
+`stairs4`), ~1270 frames each.
+
+```
+void_1500/
+├── data/<sequence>/
+│   ├── image/<timestamp>.png          # 640x480 RGB, uint8
+│   ├── sparse_depth/<timestamp>.png   # uint16, ~1500 non-zero points
+│   ├── ground_truth/<timestamp>.png   # uint16, dense
+│   ├── validity_map/<timestamp>.png   # uint16, 256 where sparse is valid
+│   ├── absolute_pose/<timestamp>.txt
+│   └── K.txt                          # 3x3 intrinsics, one row per line
+├── train_image.txt  train_sparse_depth.txt  train_ground_truth.txt  ...
+└── test_*.txt                         # official file lists
 ```
 
-Rules:
+> ⚠ **Depth is `uint16 / 256.0` metres**, not millimetres. Every other dataset
+> here uses 1000. Get it wrong and depth is off by 3.9×.
 
-1. **Splits are committed.** They are lists of ids, a few KB each. If your
-   numbers differ from a teammate's, the split is the first thing to rule out.
-2. **Use the authors' split whenever one exists**, so our numbers stay
-   comparable with the published tables. Concretely: ZJU-L5 uses `data.json`;
-   Hypersim uses `third_party/depthor/assets/hypersim_{train,val}.txt`; TOFDC
-   uses `third_party/ducos/data/TOFDC_Filled_{Train,Test}.txt`; HAMMER uses
-   scenes 2–11 / 12–14.
-3. **Never split by frame on sequential data.** Consecutive frames of one
-   staircase are near-duplicates; a random frame split leaks the test set into
-   training and inflates every metric. Split by scene, video, or capture
-   session. This applies to ARKitScenes, HAMMER, TartanAir and our own captures.
-4. Regenerate a split with `BaseDepthDataset.write_split_file(...)` and commit
-   the result in the same PR as the change that motivated it.
+`void_150` and `void_500` are the same scenes with fewer sparse points — useful
+for a sparsity ablation. Set `root:` accordingly.
 
----
+Intrinsics from `K.txt` land in `meta["intrinsics"]` as `[fx, fy, cx, cy]`; the
+Astra 2 degradation model needs them.
+
+## MinJiang
+
+`root: MinJiang-Dataset` · loader `minjiang` · [github.com/Zhoujiahuan1005/MinJiang-Dataset](https://github.com/Zhoujiahuan1005/MinJiang-Dataset)
+
+Consumer RGB-D of obstacles a robot meets, from two synchronised viewpoints.
+`STAIRS` has 909 frames per camera, `ELEVATOR` 284.
+
+```
+MinJiang-Dataset/
+├── STAIRS/
+│   ├── CAM1_RGB/<timestamp>_rgb_cam1.png          # 640x480 uint8
+│   ├── CAM1_GDEP/<timestamp>_grey_depth_cam1.png  # 640x480 uint16 MILLIMETRES
+│   ├── CAM1_DEP/<timestamp>_depth_cam1.png        # colourised preview, NOT depth
+│   └── CAM2_RGB/ CAM2_GDEP/ CAM2_DEP/             # second viewpoint
+└── ELEVATOR/                                       # same six folders
+```
+
+Two traps:
+
+* **`_DEP` is not depth.** It is an 8-bit colourised visualisation. The real
+  measurement is `_GDEP` ("grey depth"). The loader reads `_GDEP` only and
+  raises if you point it at `_DEP`.
+* **The depth is both the ground truth and the sensor output.** There is no
+  independent reference, so a completion method is scored against the very
+  sensor it is meant to fix, and holes are simply dropped from the mask. RMSE
+  from this dataset is optimistic. Use it for training and qualitative stair
+  results; label any number that comes from it. `meta["gt_source"]` says so on
+  every sample.
+
+Select scene and camera in the config: `scenes: [STAIRS]`, `cameras: [CAM1]`.
 
 ## NYU Depth v2
 
-* **Page:** <https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html>
-* **Depth range used:** 0.001–10 m
-* **Used by:** essentially every depth completion and DSR paper, including
-  DEPTHOR (`configs/test_nyu.txt`) and DuCos (`test_Sync.py`).
+`root: nyuv2` · loader `nyuv2` · [cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html)
 
-Two incompatible preprocessed packs circulate, and the loader supports both:
-
-| `dataset.layout` | Pack | Files | Depth units |
-|---|---|---|---|
-| `h5` (default) | completion (NLSPN / CompletionFormer / Deltar) | `nyudepthv2/{train,val}/<scene>/*.h5` with `rgb`, `depth`, sometimes `raw` | metres |
-| `npy` | super-resolution (DKN / FDSR / DuCos) | `test_images_v2.npy`, `test_depth.npy`, `test_minmax.npy` | **normalised [0,1]**, denormalised by the loader with `test_minmax.npy` |
-
-> ⚠️ The `npy` pack stores depth min-max-normalised per image. Without
-> `test_minmax.npy` every metric is silently wrong by a per-image scale factor.
-> The loader refuses to run rather than guess.
-
-The `h5` pack's `raw` field, where present, is the *unfilled* Kinect depth — a
-real sparse sensor input, which is strictly better than any simulation. The
-loader uses it automatically.
-
-**Get it:** `python scripts/download_data.py --dataset nyuv2` prints the links
-(NLSPN README for the h5 pack, DKN README for the npy pack).
-
-## ARKitScenes
-
-* **Page:** <https://github.com/apple/ARKitScenes>
-* **Depth range used:** 0.1–10 m · **Depth encoding:** uint16 millimetres
-* **Why we use it:** the closest public analogue of our setup — a *real* consumer
-  low-resolution depth sensor with a *real* high-resolution reference. No
-  simulation is involved, so it is where a method's ability to fix genuine
-  sensor error is measurable.
-
-Layout (the `depth_upsampling` subset):
+Two incompatible preprocessed packs circulate; both baselines use one of them,
+so the loader reads both. Pick with `dataset.layout`.
 
 ```
-data/raw/arkitscenes/upsampling/{Training,Validation}/<video_id>/
-    wide/<video_id>_<timestamp>.png            # RGB 1920x1440
-    highres_depth/<video_id>_<timestamp>.png   # uint16 mm, GT
-    lowres_depth/<video_id>_<timestamp>.png    # uint16 mm 256x192, input
-    confidence/<video_id>_<timestamp>.png      # ARKit confidence 0/1/2
-    wide_intrinsics/<video_id>_<timestamp>.pincam
+# layout: h5   -- completion pack (NLSPN / CompletionFormer / Deltar / DEPTHOR)
+nyuv2/nyudepthv2/{train,val}/<scene>/*.h5      # keys: rgb, depth, sometimes raw
+
+# layout: npy  -- super-resolution pack (DKN / FDSR / DuCos)
+nyuv2/{test_images_v2.npy, test_depth.npy, test_minmax.npy}
 ```
 
-The loader resizes to 480×640 by default (`dataset.target_size`) and can drop
-low-confidence LR pixels with `dataset.min_confidence`.
+* `h5`: depth is float metres. The `raw` key, where present, is the *unfilled*
+  Kinect depth — a genuine sparse sensor input, better than any simulation. The
+  loader uses it automatically.
+* `npy`: depth is **min-max normalised per image**. `test_minmax.npy` holds the
+  `(max, min)` in metres and the loader denormalises with it. Without that file
+  every metric is silently wrong by a per-image scale factor, so the loader
+  refuses to run rather than guess.
 
-**Get it:** scripted, via Apple's own downloader — see
-`python scripts/download_data.py --dataset arkitscenes`. Fetch a single
-`--video_id` first (~200 MB) before committing to the ~30 GB split.
+Download links: NLSPN's README for the h5 pack, DKN's for the npy pack.
 
 ## ZJU-L5
 
-* **Page:** <https://github.com/zju3dv/deltar> (released with Deltar, ECCV 2022)
-* **Depth range used:** 0.001–10 m
-* **Why it matters:** this is the dataset DEPTHOR and DEPTHOR++ report their
-  headline numbers on, so it is our primary cross-check against published
-  results.
+`root: ZJUL5` · loader `zju_l5` · released with [Deltar](https://github.com/zju3dv/deltar) (ECCV 2022)
 
-Layout, unchanged from the release (this is exactly what
-`third_party/depthor` expects):
+Real ST VL53L5CX 8×8 dToF plus RGB. This is where DEPTHOR reports its headline
+numbers, so it is our cross-check against published results.
 
 ```
-data/raw/ZJUL5/
-    data.json                 # {"train": [...], "test": [{"filename": ...}]}
-    theater/<timestamp>.h5    lab1/    cafe1/    cafe2/
+ZJUL5/
+├── data.json                # {"train": [...], "test": [{"filename": ...}]}
+├── theater/<timestamp>.h5
+├── lab1/  cafe1/  cafe2/
 ```
 
 Each `.h5`: `rgb` (480,640,3 uint8), `depth` (480,640 float32 m, stereo
 reference), `hist_data` (64,2 — per-zone histogram mean and variance), `fr`
 (64,4 — zone pixel rectangles), `mask` (64 — per-zone validity).
 
-Our loader reproduces `dtof_to_sparse_depth` from the DEPTHOR repo exactly:
-one pixel per valid zone, at the rectangle centre, carrying the zone mean
-(`dataset.footprint: center`). `footprint: zone` writes the whole rectangle
-instead — useful for methods expecting patch input, but **not** comparable with
-DEPTHOR's published numbers.
+`footprint: center` (default) reproduces DEPTHOR's `dtof_to_sparse_depth`
+exactly — one pixel per valid zone, at the rectangle centre. `footprint: zone`
+fills the whole rectangle instead; useful, but **not** comparable with their
+published numbers.
 
-**Get it:** manual — the Deltar README's dataset link.
+Download: scriptable with `gdown` (verified 2026-09-09) —
+
+```bash
+uv run --with gdown python -c "import gdown; gdown.download_folder(
+  url='https://drive.google.com/drive/folders/1ZGUdagrmFDr90Lm6qG1FkbZR_Tgpmr64',
+  output='/tmp/deltar')"
+unzip /tmp/deltar/ZJUL5.zip -d $STAIR_DATA_ROOT/
+```
+
+The folder also holds `demo.zip`, `nyu.pt` and calibration data we do not use.
+527 test frames across 10 scenes.
 
 ## HAMMER
 
-* **Page:** <https://github.com/Junggy/HAMMER-dataset> ·
-  paper <https://arxiv.org/abs/2205.04565>
-* **Depth range used:** 0.1–5 m · **Depth encoding:** uint16 millimetres
-* **Direct download (no registration, ~50 GB):**
-  <http://www.campar.in.tum.de/public_datasets/2022_arxiv_jung/_dataset_processed.zip>
+`root: hammer` · loader `hammer` · [github.com/Junggy/HAMMER-dataset](https://github.com/Junggy/HAMMER-dataset)
 
-**This is the most important dataset for our project after our own captures.**
-It is the only public dataset carrying an active-stereo stream (RealSense D435
-— the same sensing principle as the Astra 2), a dToF stream (L515), an I-ToF
-stream (Lucid Helios) *and* laser-accurate ground truth for the same frames.
-That makes it the one place where the "dToF method applied to active stereo"
-domain gap can be measured without also changing the scene. DEPTHOR++ also
-reports on it.
+The only public dataset with an **active stereo** stream (RealSense D435 — the
+same sensing principle as the Astra 2), a dToF stream (L515), an I-ToF stream
+and laser-accurate ground truth for the same frames. That makes it the one place
+to measure the "dToF method applied to active stereo" domain gap without also
+changing the scene.
 
-13 scenes, `scene02`–`scene14`; scenes 2–11 train, 12–14 test. Each scene has
-two trajectories split into sequences, plus "naked" trajectories covering the
-same viewpoints with the objects removed.
+13 scenes; 2–11 train, 12–14 test. Direct download, no registration (~50 GB):
+`http://www.campar.in.tum.de/public_datasets/2022_arxiv_jung/_dataset_processed.zip`
 
-> ⚠️ **The archive's internal folder naming is not documented upstream.** The
-> loader takes the subdirectory names as config (`rgb_subdir`, `gt_subdir`,
-> `input_subdir` in `configs/dataset/hammer.yaml`) and defaults to
-> `rgb` / `gt` / `<sensor>`. After unpacking:
->
-> ```bash
-> python scripts/download_data.py --dataset hammer --inspect
-> ```
->
-> then correct the config. The loader raises an error listing the directories it
-> actually found rather than silently returning zero samples.
+> ⚠ The archive's internal folder naming is **not documented upstream**, so the
+> loader takes the subdirectory names from the config (`rgb_subdir`,
+> `gt_subdir`, `input_subdir` in `configs/dataset/hammer.yaml`), defaulting to
+> `rgb` / `gt` / `<sensor>`. After unpacking, look at the real tree and correct
+> the config; the loader errors with the directory names it actually found
+> rather than returning zero samples.
 
-## RGB-D-D
-
-* **Page:** <https://github.com/lingzhi96/RGB-D-D-Dataset>
-* **Depth range used:** 0.1–10 m · **Depth encoding:** uint16 millimetres
-* **Used by:** DuCos (`test_RealRGBDD.py`), FDSR, DKN, and most DSR papers.
-* **Access:** by request — fill in the form / email the authors as described in
-  the repo. There is no scriptable download.
-
-```
-data/raw/RGBDD/{Train,Test}/
-    RGBDD_RGB/<name>_RGB.jpg           # 512x384
-    RGBDD_GT/<name>_HR_gt.png          # uint16 mm 512x384, GT
-    RGBDD_LR/<name>_LR_fill_depth.png  # uint16 mm 192x144, real ToF input
-```
-
-`dataset.downsample: real` uses the genuine low-resolution ToF frame — the
-honest setting, and the one DuCos's "RealRGBDD" checkpoint is for.
-`dataset.downsample: sync` ignores it and bicubically downsamples the GT
-instead; that is the synthetic protocol most papers tabulate, kept only so we
-can reproduce their numbers.
-
-## Mirror3D-NYU
-
-* **Page:** <https://github.com/3dlg-hcvc/mirror3d>
-* **Role:** NYUv2 frames with manually corrected depth in mirror regions.
-  DEPTHOR++ reports a 37% improvement in mirror regions on it. Mirrors and
-  glass are a genuine failure mode for active stereo (the projected pattern
-  reflects away), so this is directly relevant to the Astra 2 — a stairwell with
-  a glass balustrade is exactly this problem.
-* **Status:** ⬜ no loader yet. Implement as a variant of `nyuv2` that also
-  returns the mirror mask so the metrics can be computed inside and outside
-  mirror regions separately.
-
-## Hypersim
-
-* **Page:** <https://github.com/apple/ml-hypersim>
-* **Depth range used:** 0.001–20 m
-* **Role:** DEPTHOR's training set, and the cleanest source of perfect GT for
-  fitting the Astra 2 degradation model.
-
-> ⚠️ Hypersim stores **distance to the camera centre**, not planar Z. Convert
-> with `z = dist / sqrt(1 + ((u-cx)/f)^2 + ((v-cy)/f)^2)` or every metric is
-> systematically wrong towards the image corners. The stub loader's TODO list
-> says so; do not skip it.
-
-Use the frame lists in `third_party/depthor/assets/hypersim_{train,val}.txt` so
-our training split matches DEPTHOR's, and commit them into
-`data/splits/hypersim/`.
-
-## TartanAir
-
-* **Page:** <https://theairlab.org/tartanair-dataset/>
-* **Depth range used:** 0.001–80 m
-* **Role:** volume and viewpoint diversity for pre-training; several
-  environments contain stairwells.
-
-> ⚠️ Depth is `inf` for sky in outdoor scenes. Replace with 0 and let the mask
-> handle it. Depth is already planar Z — do **not** apply the Hypersim
-> conversion.
-
-## TOFDC / TOFDSR
-
-* **Page:** <https://yanzq95.github.io/projectpage/TOFDC/index.html>
-* **Depth encoding:** uint16 millimetres
-* **Role:** DuCos's second real-world benchmark (`test_RealTOFDSR.py`).
-* The exact file lists DuCos used are already vendored in the repo:
-  `third_party/ducos/data/TOFDC_Filled_{Train,Test}.txt`. Parse those rather
-  than globbing, so our split is bit-identical to theirs.
-
-## RGB-D Stair Dataset
-
-* **Status:** ⬜ URL and licence still to be confirmed — see the TODO list in
-  `data/loaders/stair_dataset.py`.
-* **Role:** the only *public* stair-specific RGB-D data we have found. It is the
-  bridge between the generic indoor benchmarks and our own captures.
-
-Before writing the loader, answer two questions and record the answers here:
-
-1. **Is the depth metric?** Several stair datasets ship 8-bit colourised depth
-   visualisations, which are useless as ground truth. If so, the dataset can
-   only serve as a qualitative RGB set and must not appear in a metric table.
-2. **Are RGB and depth registered?** Verify on five frames by hand.
-
-## Our Astra 2 captures
-
-* **Sensor:** Orbbec Astra 2, active stereo, ~0.6–8 m, uint16 millimetre depth.
-* **Status:** ⬜ capture in progress; loader stub in
-  `data/loaders/astra2_custom.py`.
-* **Not public.** Raw data stays in team storage and under `data/raw/astra2/`
-  (git-ignored); only the split JSON goes into the repo.
-
-Open decisions that must be settled and documented **here** before any number
-from this dataset is reported:
-
-| Decision | Why it matters |
-|---|---|
-| **Reference-depth source** — multi-view reconstruction, laser scan, or temporally averaged + hole-filled Astra 2 frames | The third option makes the sensor its own ground truth, which makes RMSE optimistic and δ1 meaningless. If we use it, every table must say so. `meta["gt_source"]` records it per sample. |
-| **RGB/depth alignment** | Different lenses. Use the factory extrinsics from the Orbbec SDK; store per-session intrinsics in `meta` (the degradation model needs `focal_px` and `baseline_m`). |
-| **Session-level splits** | Consecutive frames of one staircase are near-duplicates. |
-| **Scene inventory** | How many distinct staircases, materials (metal/wood/glass/concrete), lighting conditions, up vs down. A benchmark on five staircases in one building measures memorisation. |
+Depth is uint16 millimetres. `input_sensor: d435` (active stereo, our analogue),
+`l515` (dToF) or `tof`.
 
 ---
 
+## What a loader must produce
+
+Whatever the layout, `__getitem__` returns the same thing — the contract in
+[`data/loaders/base.py`](../data/loaders/base.py):
+
+| key | shape / dtype | meaning |
+|---|---|---|
+| `rgb` | (H, W, 3) float32 | RGB in [0, 1], aligned to `gt_depth` |
+| `gt_depth` | (H, W) float32 | **metres**, 0 = no measurement |
+| `sparse_depth` | (H, W) float32 | completion-style input, metres, 0 = none |
+| `sparse_mask` | (H, W) bool | where `sparse_depth` has a value |
+| `lr_depth` | (h, w) float32 | SR-style input, dense, metres |
+| `mask` | (H, W) bool | GT validity — the mask metrics use |
+| `meta` | dict | dataset, sample_id, split, input_modality, intrinsics… |
+
+Every sample carries **both** input forms, one native to the dataset and one
+derived by a documented rule, so an adapter never branches on which dataset it
+is looking at. Adding a loader: implement `_build_index` and `_load_raw`,
+everything else (unit checks, resizing, mask construction, deriving the missing
+input form) happens once in the base class. `tests/test_loaders.py` enforces it.
+
+## Split protocol
+
+Splits are frozen as JSON in `data/splits/<dataset>/<split>.json` and are the
+only data files in git:
+
+```json
+{"dataset": "void_stairs", "split": "test", "ids": ["stairs0/1552024072.1300", "..."]}
+```
+
+1. **Prefer the authors' split** when one exists, so our numbers stay comparable
+   with published tables: ZJU-L5's `data.json`, VOID's `test_*.txt`, HAMMER's
+   scene 12–14 convention.
+2. **Never split sequential data by frame.** Consecutive frames of one staircase
+   are near-duplicates; a random frame split leaks the test set into training
+   and inflates every metric. Split by sequence / scene / capture session — this
+   bites VOID, MinJiang and HAMMER.
+3. Changing a split invalidates every number previously reported on that
+   dataset. Say so in the commit message.
+
+Freeze one with `BaseDepthDataset.write_split_file(path)`.
+
 ## Checkpoints
 
-| Key | What | Size | How |
-|---|---|---|---|
-| `depth_anything_v2_vits` | Depth Anything V2 ViT-S — **required by both baselines** | ~100 MB | `python scripts/download_data.py --weights depth_anything_v2_vits` (scripted) |
-| `ducos` | DuCos pretrained models | ~215 MB each | HuggingFace `RaynWu2002/DuCos`, files under `DuCos/ckpts/` |
-| `depthor` | DEPTHOR v1 (`Depthor-ZJU-Large` / `-Small`) | ~1 GB | Google Drive links in `third_party/depthor/README.md` — manual |
-| DEPTHOR++ | — | — | **Does not exist publicly.** See [metrics_protocol.md](metrics_protocol.md#baseline-availability). |
+Weights are not datasets: they go in `checkpoints/` inside the repo (git-ignored).
+
+| What | Size | Where |
+|---|---|---|
+| Depth Anything V2 ViT-S — **both baselines need it** | ~100 MB | `huggingface.co/depth-anything/Depth-Anything-V2-Small` |
+| DuCos | ~215 MB each | `huggingface.co/RaynWu2002/DuCos`, files under `DuCos/ckpts/` |
+| DEPTHOR v1 (`depthor_zju_large.pt` 148 MB, `_small.pt` 121 MB) | ~270 MB | `gdown` the Drive ids from `third_party/depthor/README.md`, verified working |
+| DEPTHOR++ | — | **does not exist publicly**, see [metrics_protocol.md](metrics_protocol.md#baseline-availability) |
+
+## Datasets we looked at and did not take
+
+**Stair dataset with depth maps** — depth is an 8-bit *colourised* PNG and the
+labels are bounding boxes. It is a stair **detection** dataset; there is no
+metric depth in it, so it cannot serve as ground truth here. Usable only as an
+RGB source if we ever need one.

@@ -1,8 +1,0 @@
-# STUB - the loader is not implemented yet; see data/loaders/hypersim.py for the TODO list.
-name: hypersim
-loader: hypersim
-root: data/raw/hypersim
-split: test
-eval:
-  crop: none
-docs: docs/datasets.md#hypersim

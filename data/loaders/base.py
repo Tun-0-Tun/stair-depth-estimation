@@ -2,15 +2,15 @@
 
 Why one interface
 -----------------
-We benchmark two families of methods on ten datasets.  The methods disagree
+We benchmark two families of methods on several datasets.  The methods disagree
 about what the input even *is*:
 
 * **depth completion** (DEPTHOR / dToF): RGB + a *sparse* full-resolution depth
   map, zeros where the sensor returned nothing;
 * **depth super-resolution** (DuCos): RGB + a *dense low-resolution* depth map.
 
-And the datasets disagree too -- ZJU-L5 ships real 8x8 dToF zones, RGB-D-D
-ships a real low-res ToF frame, Hypersim/TartanAir ship only perfect GT.
+And the datasets disagree too -- ZJU-L5 ships real 8x8 dToF zones, VOID ships
+~1500 sparse VIO points, MinJiang and NYUv2 ship dense depth only.
 Every sample from every loader therefore carries **both** input forms, one
 native and one derived by a documented rule, so an adapter never has to know
 which dataset it is looking at.
@@ -58,7 +58,14 @@ from typing import Any
 
 import numpy as np
 
-from utils.misc import REPO_ROOT, resize_depth, resize_rgb, sparse_to_dense_nn
+from utils.misc import (
+    DATA_ROOT_ENV,
+    REPO_ROOT,
+    data_root,
+    resize_depth,
+    resize_rgb,
+    sparse_to_dense_nn,
+)
 
 try:  # torch is a hard dependency of the project, but loaders stay importable without it
     from torch.utils.data import Dataset as _TorchDataset
@@ -168,7 +175,11 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         strict: bool = True,
         **kwargs: Any,
     ) -> None:
+        # A relative root is resolved against the shared external dataset folder
+        # (STAIR_DATA_ROOT), so configs stay portable between machines.
         self.root = Path(root).expanduser()
+        if not self.root.is_absolute():
+            self.root = data_root() / self.root
         self.split = split
         self.degradation = degradation
         self.target_size = tuple(target_size) if target_size else None
@@ -182,8 +193,9 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         if strict and not self.root.exists():
             raise FileNotFoundError(
                 f"[{self.info.name}] dataset root does not exist: {self.root}\n"
-                f"Run `python scripts/download_data.py --dataset {self.key}` and see "
-                f"docs/datasets.md for the manual steps."
+                f"Set {DATA_ROOT_ENV}=<shared data folder> and lay the dataset out as "
+                f"described in docs/datasets.md, then check with "
+                f"`python scripts/check_data.py`."
             )
 
         self.records = list(self._build_index())

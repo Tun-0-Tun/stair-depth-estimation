@@ -16,7 +16,7 @@ Download: a single ~50 GB zip, no registration --
    authors' README, so the patterns below are configurable rather than
    hard-coded.  After unpacking, run::
 
-       python scripts/download_data.py --dataset hammer --inspect
+       ls $STAIR_DATA_ROOT/hammer
 
    which prints the real tree, then set ``rgb_glob`` / ``gt_subdir`` /
    ``input_subdir`` in ``configs/dataset/hammer.yaml`` to match.  The loader

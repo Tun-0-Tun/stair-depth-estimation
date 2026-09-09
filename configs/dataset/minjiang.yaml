@@ -1,0 +1,14 @@
+# Dual-view consumer RGB-D on staircases.
+# NOTE: depth is the sensor output, not an independent reference -> metrics from
+# this dataset are optimistic. Training / qualitative use, label any number.
+name: minjiang
+loader: minjiang
+root: MinJiang-Dataset   # relative to $STAIR_DATA_ROOT
+split: test
+scenes: [STAIRS]         # ELEVATOR also available
+cameras: [CAM1]          # CAM2 is the second viewpoint
+min_depth: 0.3
+max_depth: 8.0
+eval:
+  crop: none
+docs: docs/datasets.md#minjiang

@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 
 __all__ = [
+    "DATA_ROOT_ENV",
+    "data_root",
     "REPO_ROOT",
     "downsample_depth",
     "resize_depth",
@@ -25,6 +27,17 @@ __all__ = [
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+#: Where the datasets live. They are shared between several people and are far
+#: too big for the repo, so they sit in one external folder that everyone
+#: mounts at their own path. Set STAIR_DATA_ROOT to point at it; configs then
+#: name datasets relatively ("void_1500", "MinJiang-Dataset") and stay portable.
+DATA_ROOT_ENV = "STAIR_DATA_ROOT"
+
+
+def data_root() -> Path:
+    """The external dataset folder. Defaults to ``<repo>/../data``."""
+    return Path(os.environ.get(DATA_ROOT_ENV, REPO_ROOT.parent / "data")).expanduser()
 
 
 def set_seed(seed: int, deterministic: bool = True) -> None:

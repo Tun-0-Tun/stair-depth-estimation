@@ -73,6 +73,10 @@ class DepthorAdapter(BaselineModel):
         self.variant = variant
         self.n_bins = int(n_bins)
         self.depth_anything_ckpt = depth_anything_ckpt
+        self.bpops = "unknown"
+
+    def describe(self) -> dict[str, Any]:
+        return {**super().describe(), "variant": self.variant, "bpops": self.bpops}
 
     # ------------------------------------------------------------ checks
 
@@ -96,14 +100,9 @@ class DepthorAdapter(BaselineModel):
                 reasons.append(f"missing python package: {mod}")
                 instructions.append(hint)
 
-        if importlib.util.find_spec("BpOps") is None:
-            reasons.append(
-                "missing CUDA extension 'BpOps' (CSPN++ refinement, from BP-Net; CUDA 12.1 only)"
-            )
-            instructions.append(
-                "on a CUDA 12.1 machine: git clone https://github.com/kakaxi314/BP-Net && "
-                "cd BP-Net && python setup.py install   (there is no CPU/MPS build)"
-            )
+        # BpOps (the CSPN++ CUDA extension) is not a hard blocker: baselines/
+        # bpops_shim.py supplies the same primitive in portable torch. It is
+        # slower and it is our code, so the run records bpops="shim".
 
         ckpt = kwargs.get("checkpoint") or checkpoint_path
         if not ckpt or not Path(ckpt).exists():
@@ -150,6 +149,16 @@ class DepthorAdapter(BaselineModel):
 
     def _load(self, checkpoint_path: Path | None) -> Any:
         import torch
+
+        from baselines.bpops_shim import install as install_bpops
+
+        self.bpops = "shim" if install_bpops() else "cuda"
+        if self.bpops == "shim":
+            print(
+                "[depthor] BpOps CUDA extension not found; using baselines/bpops_shim.py. "
+                "Numerically checked against BP-Net's kernel (tests/test_bpops_shim.py), "
+                "but slower, and the results row is tagged bpops=shim."
+            )
 
         add_third_party_to_path("depthor")
         self._patch_depth_anything()

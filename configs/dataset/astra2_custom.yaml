@@ -1,8 +1,0 @@
-# STUB - the loader is not implemented yet; see data/loaders/astra2_custom.py for the TODO list.
-name: astra2_custom
-loader: astra2_custom
-root: data/raw/astra2
-split: test
-eval:
-  crop: none
-docs: docs/datasets.md#astra2_custom

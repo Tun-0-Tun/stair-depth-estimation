@@ -1,6 +1,6 @@
 name: hammer
 loader: hammer
-root: data/raw/hammer
+root: hammer
 split: test
 # d435 = active stereo (closest to the Astra 2), l515 = dToF, tof = Lucid I-ToF
 input_sensor: d435
@@ -13,6 +13,6 @@ max_depth: 5.0
 eval:
   crop: none
 # The archive's internal layout is undocumented upstream: run
-#   python scripts/download_data.py --dataset hammer --inspect
+#   ls $STAIR_DATA_ROOT/hammer
 # and correct the *_subdir keys above before the first real run.
 docs: docs/datasets.md#hammer

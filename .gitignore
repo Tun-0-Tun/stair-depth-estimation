@@ -21,6 +21,13 @@ checkpoints/
 *.bag
 *.bin
 
+# dataset archives - unpack them into $STAIR_DATA_ROOT, not into the repo
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
 # Allow small committed artefacts that would otherwise be caught above
 !data/splits/**
 !tests/assets/**

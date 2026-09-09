@@ -1,13 +1,13 @@
 """Dataset loaders.  Importing this package registers every dataset key.
 
-Implemented: ``synthetic_stairs``, ``nyuv2``, ``arkitscenes``, ``zju_l5``,
-``hammer``, ``rgbdd``.
-Stubs (contract + TODO list, see the module docstring in each file):
-``hypersim``, ``tartanair``, ``tofdc``, ``stair_dataset``, ``astra2_custom``.
+Stair-domain: ``void_stairs``, ``minjiang``.
+General benchmarks: ``nyuv2``, ``zju_l5``, ``hammer``.
+CI only: ``synthetic_stairs`` (generated, never a reportable number).
+
+Datasets live in one shared external folder -- see ``STAIR_DATA_ROOT`` in
+``utils/misc.py`` and the layouts in ``docs/datasets.md``.
 """
 
-from data.loaders.arkitscenes import ARKitScenesDataset  # noqa: F401
-from data.loaders.astra2_custom import Astra2CustomDataset  # noqa: F401
 from data.loaders.base import (
     DATASET_REGISTRY,
     SAMPLE_KEYS,
@@ -18,28 +18,14 @@ from data.loaders.base import (
     validate_sample,
 )
 from data.loaders.hammer import HammerDataset  # noqa: F401
-from data.loaders.hypersim import HypersimDataset  # noqa: F401
+from data.loaders.minjiang import MinJiangDataset  # noqa: F401
 from data.loaders.nyuv2 import NYUv2Dataset  # noqa: F401
-from data.loaders.rgbdd import RGBDDDataset  # noqa: F401
-from data.loaders.stair_dataset import RGBDStairDataset  # noqa: F401
 from data.loaders.synthetic import SyntheticStairsDataset  # noqa: F401
-from data.loaders.tartanair import TartanAirDataset  # noqa: F401
-from data.loaders.tofdc import TOFDCDataset  # noqa: F401
+from data.loaders.void_stairs import VOIDStairsDataset  # noqa: F401
 from data.loaders.zju_l5 import ZJUL5Dataset  # noqa: F401
-
-#: Datasets with a working loader (the rest are stubs).
-IMPLEMENTED: tuple[str, ...] = (
-    "synthetic_stairs",
-    "nyuv2",
-    "arkitscenes",
-    "zju_l5",
-    "hammer",
-    "rgbdd",
-)
 
 __all__ = [
     "DATASET_REGISTRY",
-    "IMPLEMENTED",
     "SAMPLE_KEYS",
     "BaseDepthDataset",
     "DatasetInfo",

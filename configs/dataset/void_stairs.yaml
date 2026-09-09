@@ -1,0 +1,13 @@
+# Real sparse VIO points + dense reference, on real staircases.
+# Our primary stair benchmark.
+name: void_stairs
+loader: void_stairs
+root: void_1500          # relative to $STAIR_DATA_ROOT; void_150 / void_500 also exist
+split: test
+sequence_glob: "stairs*"
+frame_stride: 1
+min_depth: 0.2
+max_depth: 10.0
+eval:
+  crop: none
+docs: docs/datasets.md#void

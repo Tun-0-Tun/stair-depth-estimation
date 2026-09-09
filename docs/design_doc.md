@@ -160,7 +160,7 @@ flag in `configs/model/ours.yaml`:
 | Area | Owner |
 |---|---|
 | Astra 2 degradation model + calibration captures | Olesya |
-| Stair dataset capture + `astra2_custom` / `stair_dataset` loaders | Olesya |
+| Astra 2 stair capture + its loader (does not exist yet) | Olesya |
 | Remaining loaders (Hypersim, TartanAir, TOFDC, Mirror3D) | Maxim |
 | Baseline runs on the CUDA box, cross-check table | Maxim |
 | Metrics, harness, adapters, our method | tech lead |

@@ -1,6 +1,6 @@
 name: nyuv2
 loader: nyuv2
-root: data/raw/nyuv2
+root: nyuv2
 split: test
 # "h5"  -> depth-completion layout (<root>/nyudepthv2/{train,val}/<scene>/*.h5)
 # "npy" -> depth-SR layout (test_images_v2.npy / test_depth.npy / test_minmax.npy)

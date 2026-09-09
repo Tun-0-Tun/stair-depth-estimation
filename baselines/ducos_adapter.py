@@ -122,9 +122,8 @@ class DuCosAdapter(BaselineModel):
         if not ckpt or not Path(ckpt).exists():
             reasons.append(f"DuCos checkpoint not found: {ckpt or '<unset>'}")
             instructions.append(
-                "python scripts/download_data.py --weights ducos   (or: huggingface-cli "
-                "download RaynWu2002/DuCos --local-dir checkpoints/ducos -- note the files "
-                "live under DuCos/ckpts/ inside the repo), then set model.checkpoint"
+                "huggingface-cli download RaynWu2002/DuCos --local-dir checkpoints/ducos "
+                "(the files live under DuCos/ckpts/ inside the repo), then set model.checkpoint"
             )
 
         da = kwargs.get("depth_anything_ckpt", "checkpoints/depth_anything_v2_vits.pth")
