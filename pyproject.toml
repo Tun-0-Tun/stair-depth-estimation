@@ -55,6 +55,19 @@ notebooks = ["jupyterlab>=4.0", "matplotlib>=3.7", "seaborn>=0.13"]
 [tool.uv]
 default-groups = ["dev"]
 
+# The sinope GPU nodes run driver 555.42.06 (max CUDA 12.5) - pin torch/vision
+# to a cu124 build so `uv sync` doesn't resolve the default cu13x wheels and
+# break with `undefined symbol: ncclCommResume` against the older NCCL these
+# nodes ship.
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu124", marker = "sys_platform == 'linux'" }]
+
 [tool.setuptools]
 packages = ["baselines", "data", "metrics", "models", "utils"]
 
