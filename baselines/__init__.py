@@ -14,6 +14,7 @@ from baselines.base import (
 from baselines.depthor_adapter import DepthorAdapter, DepthorPlusPlusAdapter
 from baselines.ducos_adapter import DuCosAdapter
 from baselines.reference import BicubicBaseline, NearestFillBaseline
+from baselines.wave_adapter import WaveAdapter
 
 __all__ = [
     "BASELINE_REGISTRY",
@@ -24,6 +25,7 @@ __all__ = [
     "DepthorPlusPlusAdapter",
     "DuCosAdapter",
     "NearestFillBaseline",
+    "WaveAdapter",
     "build_baseline",
     "register_baseline",
 ]
