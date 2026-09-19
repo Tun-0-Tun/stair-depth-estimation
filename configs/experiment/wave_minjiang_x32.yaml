@@ -1,0 +1,27 @@
+# WAVE x32 on MinJiang stairs (synthetic bicubic protocol).
+# MinJiang is gt_only, so the LR input is simulated: bicubic_x32 downsamples the
+# GT to H/32, which is exactly the grid model.scale expects.
+# The "GT" is the sensor's own depth, not an independent reference -> metrics
+# are optimistic; label any number. Zero-shot: x32 weights are NYUv2.
+defaults:
+  - dataset: minjiang
+  - model: wave
+  - degradation: bicubic_x32
+
+seed: 0
+device: auto
+model:
+  checkpoint: checkpoints/wave/NYU32x.pth
+  scale: 32
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.3
+  max_depth: 8.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "bicubic x32 from sensor depth (optimistic); min/max from the LR input; zero-shot"
