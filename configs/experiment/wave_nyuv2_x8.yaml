@@ -9,7 +9,7 @@ device: auto
 dataset:
   layout: npy
 model:
-  checkpoint: checkpoints/wave/x8/last.pth
+  checkpoint: checkpoints/wave/NYU8x.pth
   scale: 8
 eval:
   crop: border6

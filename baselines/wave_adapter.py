@@ -20,7 +20,7 @@ What this adapter absorbs
 4. **Expired DINOv3 URL.**  Always ``use_pretrained=False`` as the checkpoint
    already holds the DINO weights.
 5. **RGB standardisation.**  ImageNet mean/std by default, ``rgb_norm="unit"``
-   for plain ``[0, 1]``. 
+   for plain ``[0, 1]``.
 """
 
 from __future__ import annotations
@@ -42,43 +42,7 @@ _SUPPORTED_SCALES = (8, 16, 32)
 _DINO_PATCH = 16
 _IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 _IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-# "x16" (our layout) or "Scale_16" (upstream's model_states_* folder names)
-_SCALE_IN_PATH = re.compile(r"(?:scale_|(?<![a-z0-9])x)(\d+)(?!\d)", re.IGNORECASE)
-
-
-def _pad_multiple(scale: int) -> int:
-    return max(_DINO_PATCH, int(scale))
-
-
-def _padded_hw(hw: tuple[int, int], scale: int) -> tuple[int, int]:
-    m = _pad_multiple(scale)
-    return (-(-hw[0] // m) * m, -(-hw[1] // m) * m)
-
-
-def _prepare_lr(
-    depth: np.ndarray, hw_pad: tuple[int, int], scale: int
-) -> tuple[np.ndarray | None, float, float]:
-    """Any depth map -> (normalised dense LR on the WAVE grid, d_min, d_max).
-
-    Returns ``(None, d_min, d_min)`` when the normalisation is undefined.
-    """
-    depth = np.nan_to_num(np.asarray(depth, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0)
-    valid = depth > 0
-    if not valid.any():
-        return None, 0.0, 0.0
-
-    # 1. min/max from the input's own measurements, before anything is invented
-    d_min, d_max = float(depth[valid].min()), float(depth[valid].max())
-    if d_max - d_min < 1e-6:
-        return None, d_min, d_min
-
-    # 2. fill holes first, then onto WAVE's LR grid
-    dense = depth if valid.all() else sparse_to_dense_nn(depth)
-    lr = resize_depth(dense, (hw_pad[0] // scale, hw_pad[1] // scale), mode="bicubic")
-
-    # bicubic can overshoot the input range slightly
-    lr_n = np.clip((lr - d_min) / (d_max - d_min), 0.0, 1.0)
-    return lr_n.astype(np.float32), d_min, d_max
+_SCALE_IN_PATH = re.compile(r"(?<!\d)(\d+)x(?![a-z0-9])", re.IGNORECASE)
 
 
 def _check_checkpoint_scale(checkpoint_path: Path | str | None, scale: int) -> str | None:
@@ -89,7 +53,7 @@ def _check_checkpoint_scale(checkpoint_path: Path | str | None, scale: int) -> s
     if not found:
         return (
             f"[wave] cannot tell the scale of {checkpoint_path} from its path; "
-            f"make sure it is the x{scale} checkpoint (the weights cannot tell)"
+            f"make sure it is the {scale}x checkpoint (the weights cannot tell)"
         )
     if scale not in found:
         raise RuntimeError(
@@ -169,8 +133,7 @@ class WaveAdapter(BaselineModel):
             instructions.append(
                 "gdown --folder https://drive.google.com/drive/folders/"
                 "1uY5uzU8AAKafeoN_hbuC3bxVN3WJXhin -O checkpoints/wave_upstream, then copy "
-                f"model_states_WAVE_*_Scale_{scale}/last.pth to checkpoints/wave/x{scale}/last.pth "
-                "and set model.checkpoint"
+                f"to checkpoints/wave/NYU{scale}x.pth and set model.checkpoint"
             )
 
         return Availability(ok=not reasons, reasons=reasons, instructions=instructions)
@@ -187,11 +150,10 @@ class WaveAdapter(BaselineModel):
         add_third_party_to_path("wave")
         WAVE = importlib.import_module("Components.WAVE").WAVE
 
-        # 4. never True: the DINOv3 URL behind it has expired.
         # img_size is left at WAVE's default: it creates no weights, and the real
         # size is only known once _predict sees an image (see _set_img_size).
         model = WAVE(
-            use_pretrained=False,
+            use_pretrained=False,  # DINOv3 is never True
             num_feats=self.num_feats,
             patch_size=self.patch_size,
             scale=self.scale,
@@ -210,7 +172,9 @@ class WaveAdapter(BaselineModel):
             if unexpected:
                 print(f"[wave] ignoring {len(unexpected)} unexpected tensors in the checkpoint")
 
-        return model.to(self.device).eval()
+        model = model.to(self.device)
+        # model.set_extra_param(device=self.device)
+        return model.eval()
 
     # ----------------------------------------------------------- predict
 
@@ -228,24 +192,67 @@ class WaveAdapter(BaselineModel):
         pe.patches_resolution = (hw[0] // self.patch_size, hw[1] // self.patch_size)
         pe.num_patches = pe.patches_resolution[0] * pe.patches_resolution[1]
 
+    def _preprocess_rgb(self, rgb: np.ndarray) -> tuple[np.ndarray, tuple[int, int]]:
+        """Standardise ``rgb`` and zero-pad it onto WAVE's (h_pad, w_pad) grid.
+
+        0. Size must be divisible by both ``scale`` and the DINO patch size (16);
+           padding to a multiple of ``max(16, scale)`` guarantees both at once.
+        3. Zero-pad bottom/right, as upstream's ``GetInference16``.
+        5. RGB standardisation (unverified against upstream, see module docstring).
+
+        Also updates ``self.img_size`` via ``_set_img_size`` for the padded grid.
+        Returns ``(rgb_padded, (h_pad, w_pad))``; ``hw_pad`` also feeds
+        ``_preprocess_depth`` so both land on the same grid.
+        """
+        h, w = rgb.shape[:2]
+        pad_size = max(_DINO_PATCH, self.scale)
+        h_pad = -(-h // pad_size) * pad_size
+        w_pad = -(-w // pad_size) * pad_size
+        self._set_img_size((h_pad, w_pad))
+
+        rgb_n = (rgb - _IMAGENET_MEAN) / _IMAGENET_STD if self.rgb_norm == "imagenet" else rgb
+        rgb_p = np.zeros((h_pad, w_pad, 3), dtype=np.float32)
+        rgb_p[:h, :w] = rgb_n
+
+        return rgb_p, (h_pad, w_pad)
+
+    def _preprocess_depth(
+        self, depth_in: np.ndarray, hw_pad: tuple[int, int]
+    ) -> tuple[np.ndarray | None, float, float]:
+        """Any depth map -> (normalised dense LR on the WAVE (h_pad, w_pad) grid, d_min, d_max).
+
+        Returns ``(None, d_min, d_min)`` when the normalisation is undefined.
+        """
+        depth = np.nan_to_num(
+            np.asarray(depth_in, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0
+        )
+        valid = depth > 0
+        if not valid.any():
+            return None, 0.0, 0.0
+
+        # 1. min/max from the input's own measurements, before anything is invented
+        d_min, d_max = float(depth[valid].min()), float(depth[valid].max())
+        if d_max - d_min < 1e-6:
+            return None, d_min, d_min
+
+        # 2. fill holes first, then onto WAVE's LR grid
+        dense = depth if valid.all() else sparse_to_dense_nn(depth)
+        lr = resize_depth(dense, (hw_pad[0] // self.scale, hw_pad[1] // self.scale), mode="bicubic")
+
+        # bicubic can overshoot the input range slightly
+        lr_n = np.clip((lr - d_min) / (d_max - d_min), 0.0, 1.0)
+        return lr_n.astype(np.float32), d_min, d_max
+
     def _predict(self, rgb: np.ndarray, depth_in: np.ndarray, **kwargs: Any) -> np.ndarray:
         import torch
 
         h, w = rgb.shape[:2]
-        h_pad, w_pad = _padded_hw((h, w), self.scale)
-        self._set_img_size((h_pad, w_pad))
+        rgb_p, hw_pad = self._preprocess_rgb(rgb)
+        lr_n, d_min, d_max = self._preprocess_depth(depth_in, hw_pad)
 
-        # 1. + 2. any depth -> normalised dense LR, min/max from the input only
-        lr_n, d_min, d_max = _prepare_lr(depth_in, (h_pad, w_pad), self.scale)
         if lr_n is None:
             self.n_degenerate += 1
             return np.clip(np.full((h, w), d_min, dtype=np.float32), self.min_depth, self.max_depth)
-
-        # 5. RGB standardisation (unverified against upstream, see module docstring)
-        rgb_n = (rgb - _IMAGENET_MEAN) / _IMAGENET_STD if self.rgb_norm == "imagenet" else rgb
-        # 3. zero-pad bottom/right, as upstream's GetInference16
-        rgb_p = np.zeros((h_pad, w_pad, 3), dtype=np.float32)
-        rgb_p[:h, :w] = rgb_n
 
         image = torch.from_numpy(rgb_p.transpose(2, 0, 1))[None].to(self.device).float()
         lr = torch.from_numpy(lr_n)[None, None].to(self.device).float()
