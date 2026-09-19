@@ -1,0 +1,29 @@
+# WAVE x16 on VOID stairs, real sparse VIO input (no simulation).
+# VOID ships real sparse depth, so the scale is not a degradation (the loader
+# would ignore one): lr_scale densifies the real points onto the H/16 grid, and
+# must equal model.scale or the adapter resamples a second time.
+# Zero-shot: the x16 weights are trained on NYUv2, never on VOID.
+defaults:
+  - dataset: void_stairs
+  - model: wave
+  - degradation: none
+
+seed: 0
+device: auto
+dataset:
+  lr_scale: 16
+model:
+  checkpoint: checkpoints/wave/NYU16x.pth
+  scale: 16
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.2
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "real VIO input densified to H/16; min/max from the input, not GT; zero-shot"

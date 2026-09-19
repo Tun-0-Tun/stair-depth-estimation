@@ -1,0 +1,29 @@
+# WAVE x8 on VOID stairs, real sparse VIO input (no simulation).
+# VOID ships real sparse depth, so the scale is not a degradation (the loader
+# would ignore one): lr_scale densifies the real points onto the H/8 grid, and
+# must equal model.scale or the adapter resamples a second time.
+# Zero-shot: the x8 weights are trained on HyperSim, never on VOID.
+defaults:
+  - dataset: void_stairs
+  - model: wave
+  - degradation: none
+
+seed: 0
+device: auto
+dataset:
+  lr_scale: 8
+model:
+  checkpoint: checkpoints/wave/NYU8x.pth
+  scale: 8
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.2
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "real VIO input densified to H/8; min/max from the input, not GT; zero-shot"
