@@ -19,11 +19,11 @@ Nothing but the split files in `data/splits/` ever goes into git.
 
 ```
 $STAIR_DATA_ROOT/
-├── void_1500/           # VOID, stair sequences        -> loader void_stairs
+├── VOID/                # VOID, stair sequences        -> loader void_stairs
 ├── MinJiang-Dataset/    # dual-view RGB-D on stairs    -> loader minjiang
-├── nyuv2/               # NYU Depth v2                 -> loader nyuv2
+├── nyu_depth_v2/        # NYU Depth v2                 -> loader nyuv2
 ├── ZJUL5/               # ZJU-L5, real dToF            -> loader zju_l5
-└── hammer/              # HAMMER, multi-sensor         -> loader hammer
+└── HAMMER/              # HAMMER, multi-sensor         -> loader hammer
 ```
 
 Folder names are what `scripts/check_data.py` and the configs expect. Rename
@@ -110,19 +110,29 @@ Select scene and camera in the config: `scenes: [STAIRS]`, `cameras: [CAM1]`.
 
 ## NYU Depth v2
 
-`root: nyuv2` · loader `nyuv2` · [cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html)
+`root: nyu_depth_v2` · loader `nyuv2` · [cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html](https://cs.nyu.edu/~fergus/datasets/nyu_depth_v2.html)
 
-Two incompatible preprocessed packs circulate; both baselines use one of them,
-so the loader reads both. Pick with `dataset.layout`.
+The official pack plus two incompatible preprocessed ones circulate; the
+baselines each use one, so the loader reads all three. Pick with
+`dataset.layout`.
 
 ```
+# layout: mat  -- official labeled pack (this is what we have)   [default]
+nyu_depth_v2/nyu_depth_v2_labeled.mat          # keys: images, depths, rawDepths
+
 # layout: h5   -- completion pack (NLSPN / CompletionFormer / Deltar / DEPTHOR)
-nyuv2/nyudepthv2/{train,val}/<scene>/*.h5      # keys: rgb, depth, sometimes raw
+nyu_depth_v2/nyudepthv2/{train,val}/<scene>/*.h5   # keys: rgb, depth, sometimes raw
 
 # layout: npy  -- super-resolution pack (DKN / FDSR / DuCos)
-nyuv2/{test_images_v2.npy, test_depth.npy, test_minmax.npy}
+nyu_depth_v2/{test_images_v2.npy, test_depth.npy, test_minmax.npy}
 ```
 
+* `mat`: MATLAB v7.3, i.e. HDF5 — read with `h5py`, not `scipy.io.loadmat`.
+  All 1449 labeled samples, depth is float metres. MATLAB is column-major, so
+  the loader transposes. `rawDepths` is the unfilled Kinect depth and is used
+  as a real sparse input, exactly as the h5 pack's `raw` is.
+  ⚠ **No official train/test split in this file** — the loader returns all
+  1449 samples, which is fine to benchmark on but must never be trained on.
 * `h5`: depth is float metres. The `raw` key, where present, is the *unfilled*
   Kinect depth — a genuine sparse sensor input, better than any simulation. The
   loader uses it automatically.

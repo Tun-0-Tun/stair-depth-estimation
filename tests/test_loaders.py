@@ -223,3 +223,36 @@ def test_dtof_sim_writes_at_most_one_value_per_zone():
     out = deg(gt, seed=3)
     assert out["meta"]["n_zones_reported"] <= 64
     assert 0 < (out["sparse_depth"] > 0).mean() < 1.0
+
+
+def test_nyuv2_mat_layout_transposes_matlab_axes(tmp_path):
+    """MATLAB is column-major, so h5py hands back (N, 3, W, H) / (N, W, H).
+
+    Getting the transpose wrong yields a plausible-looking but rotated image
+    and a depth map that does not line up with it -- no crash, just a quietly
+    wrong column in the table.  Pin the axes with a non-square asymmetric probe.
+    """
+    h5py = pytest.importorskip("h5py")
+
+    n, h, w = 2, 4, 6
+    depths = np.arange(n * w * h, dtype=np.float32).reshape(n, w, h)
+    images = np.arange(n * 3 * w * h, dtype=np.uint8).reshape(n, 3, w, h)
+
+    root = tmp_path / "nyu_depth_v2"
+    root.mkdir()
+    with h5py.File(root / "nyu_depth_v2_labeled.mat", "w") as f:
+        f["images"], f["depths"], f["rawDepths"] = images, depths, depths
+
+    ds = build_dataset(
+        {"loader": "nyuv2", "root": str(root), "layout": "mat"},
+        degradation=build_degradation({"type": "identity"}),
+    )
+    assert len(ds) == n
+
+    sample = ds[1]
+    assert sample["rgb"].shape == (h, w, 3)
+    assert sample["gt_depth"].shape == (h, w)
+    assert np.array_equal(sample["gt_depth"], depths[1].T)
+    assert np.allclose(sample["rgb"], images[1].transpose(2, 1, 0) / 255.0)
+    assert sample["meta"]["sparse_source"] == "kinect_raw"
+    validate_sample(sample, "nyuv2")

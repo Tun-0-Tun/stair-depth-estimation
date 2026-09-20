@@ -1,7 +1,14 @@
 """NYU Depth v2.
 
-Two on-disk layouts are in circulation and both baselines use one of them, so
-this loader reads both:
+Three on-disk layouts are in circulation, so this loader reads all of them:
+
+``layout="mat"`` -- the official labeled pack, ``nyu_depth_v2_labeled.mat``: one
+    MATLAB v7.3 (= HDF5) file with all 1449 labeled samples.  Keys ``images``
+    (uint8), ``depths`` (float metres, Levin-filled) and ``rawDepths`` (the
+    unfilled Kinect depth, holes as 0).  MATLAB stores column-major, so h5py
+    hands back reversed axes and we transpose on the way out.  There is no
+    official train/test split in this file -- every sample is returned, which
+    is fine for benchmarking but means it must never be used for training.
 
 ``layout="h5"`` -- the depth-*completion* convention (NLSPN / CompletionFormer /
     Deltar / DEPTHOR).  One HDF5 per sample with datasets ``rgb`` (3, H, W or
@@ -53,18 +60,25 @@ class NYUv2Dataset(BaseDepthDataset):
         split: str = "test",
         layout: str = "h5",
         minmax_file: str | None = "test_minmax.npy",
+        mat_file: str = "nyu_depth_v2_labeled.mat",
         **kwargs: Any,
     ) -> None:
-        if layout not in ("h5", "npy"):
-            raise ValueError(f"layout must be 'h5' or 'npy', got {layout!r}")
+        if layout not in ("h5", "npy", "mat"):
+            raise ValueError(f"layout must be 'h5', 'npy' or 'mat', got {layout!r}")
         self.layout = layout
         self.minmax_file = minmax_file
+        self.mat_file = mat_file
         self._npy_cache: dict[str, np.ndarray] = {}
+        self._mat_handle: Any = None
         super().__init__(root=root, split=split, **kwargs)
 
     # ------------------------------------------------------------------
 
     def _build_index(self) -> Sequence[Any]:
+        if self.layout == "mat":
+            n = self._mat()["depths"].shape[0]
+            return [{"id": f"nyu_{i:04d}", "index": i} for i in range(n)]
+
         if self.layout == "h5":
             subdir = {"train": "train", "val": "val", "test": "val"}.get(self.split, self.split)
             base = self.root / "nyudepthv2" / subdir
@@ -95,10 +109,57 @@ class NYUv2Dataset(BaseDepthDataset):
             self._npy_cache[name] = np.load(path)
         return self._npy_cache[name]
 
+    def _mat(self) -> Any:
+        """The open ``nyu_depth_v2_labeled.mat`` handle (~2.8 GB, read lazily)."""
+        # ponytail: one handle held open for the dataset's lifetime. Fine for a
+        # single-process run; give each worker its own handle if we ever set
+        # num_workers > 0, because an h5py file does not survive a fork.
+        if self._mat_handle is None:
+            try:
+                import h5py
+            except ImportError as exc:  # pragma: no cover
+                raise ImportError(
+                    "layout='mat' needs h5py: pip install h5py (it is in requirements.txt)"
+                ) from exc
+
+            path = self.root / self.mat_file
+            if not path.exists():
+                raise FileNotFoundError(
+                    f"[nyuv2] layout='mat' needs {path}. Download the labeled pack "
+                    "(see docs/datasets.md) or switch to layout='h5' / 'npy'."
+                )
+            self._mat_handle = h5py.File(path, "r")
+        return self._mat_handle
+
     def _load_raw(self, record: Mapping[str, Any]) -> Mapping[str, Any]:
+        if self.layout == "mat":
+            return self._load_mat_sample(record)
         if self.layout == "h5":
             return self._load_h5(record)
         return self._load_npy_sample(record)
+
+    def _load_mat_sample(self, record: Mapping[str, Any]) -> Mapping[str, Any]:
+        i = int(record["index"])
+        f = self._mat()
+
+        # MATLAB is column-major: h5py sees images as (N, 3, W, H) and depths
+        # as (N, W, H). Transpose back to (H, W, 3) / (H, W).
+        rgb = np.asarray(f["images"][i]).transpose(2, 1, 0).astype(np.float32) / 255.0
+        depth = np.asarray(f["depths"][i], dtype=np.float32).T
+
+        out: dict[str, Any] = {
+            "rgb": rgb,
+            "gt_depth": depth,
+            "sample_id": record["id"],
+            "rgb_path": str(self.root / self.mat_file),
+            "depth_path": str(self.root / self.mat_file),
+        }
+        if "rawDepths" in f:
+            # Same deal as the h5 pack's 'raw': unfilled Kinect depth, a real
+            # sparse input rather than a simulated one.
+            out["sparse_depth"] = np.asarray(f["rawDepths"][i], dtype=np.float32).T
+            out["meta"] = {"sparse_source": "kinect_raw"}
+        return out
 
     def _load_h5(self, record: Mapping[str, Any]) -> Mapping[str, Any]:
         try:

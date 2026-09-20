@@ -1,6 +1,6 @@
 name: hammer
 loader: hammer
-root: hammer
+root: HAMMER
 split: test
 # d435 = active stereo (closest to the Astra 2), l515 = dToF, tof = Lucid I-ToF
 input_sensor: d435

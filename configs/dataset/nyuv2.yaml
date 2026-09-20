@@ -1,10 +1,11 @@
 name: nyuv2
 loader: nyuv2
-root: nyuv2
+root: nyu_depth_v2
 split: test
+# "mat" -> official labeled pack (<root>/nyu_depth_v2_labeled.mat), 1449 samples
 # "h5"  -> depth-completion layout (<root>/nyudepthv2/{train,val}/<scene>/*.h5)
 # "npy" -> depth-SR layout (test_images_v2.npy / test_depth.npy / test_minmax.npy)
-layout: h5
+layout: mat
 min_depth: 0.001
 max_depth: 10.0
 eval:
