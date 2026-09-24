@@ -27,7 +27,7 @@ from utils.misc import DATA_ROOT_ENV, data_root
 #: dataset key -> (root dir under STAIR_DATA_ROOT, paths that must exist inside it)
 EXPECTED: dict[str, tuple[str, tuple[str, ...]]] = {
     "void_stairs": (
-        "VOID",
+        "VOID/void_1500",
         (
             "data/stairs0/image",
             "data/stairs0/sparse_depth",

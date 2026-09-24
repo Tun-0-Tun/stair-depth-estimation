@@ -4,15 +4,18 @@ root: HAMMER
 split: test
 # d435 = active stereo (closest to the Astra 2), l515 = dToF, tof = Lucid I-ToF
 input_sensor: d435
-rgb_subdir: rgb
-gt_subdir: gt
-input_subdir: null       # defaults to input_sensor
+# Real layout: <root>/<scene>_traj<n>_<m>/polarization/{rgb,_gt,depth_d435,depth_l515,depth_tof}.
+# The RGB camera *is* the polarization camera, and the authors ship every depth
+# stream already warped into its frame -- so rgb, GT and input are siblings there
+# and all three are registered. The per-sensor folders one level up (d435/,
+# l515_depth/, tof/) hold the same streams in each sensor's own frame; using
+# those would mean doing the warp ourselves for no gain.
+rgb_subdir: polarization/rgb
+gt_subdir: polarization/_gt
+input_subdir: polarization/depth_d435   # depth_l515 / depth_tof for the other sensors
 rgb_glob: "*.png"
 min_depth: 0.1
 max_depth: 5.0
 eval:
   crop: none
-# The archive's internal layout is undocumented upstream: run
-#   ls $STAIR_DATA_ROOT/hammer
-# and correct the *_subdir keys above before the first real run.
 docs: docs/datasets.md#hammer

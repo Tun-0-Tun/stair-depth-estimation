@@ -2,7 +2,7 @@
 # Our primary stair benchmark.
 name: void_stairs
 loader: void_stairs
-root: VOID               # relative to $STAIR_DATA_ROOT; void_150 / void_500 also exist
+root: VOID/void_1500     # the release level; void_150 / void_500 sit under VOID/void_150_500/
 split: test
 sequence_glob: "stairs*"
 frame_stride: 1

@@ -9,7 +9,7 @@ export STAIR_DATA_ROOT=/path/to/shared/data     # put it in your shell rc
 python scripts/check_data.py --load             # does my copy match the layout?
 ```
 
-Configs name datasets *relatively* (`root: void_1500`), so the same
+Configs name datasets *relatively* (`root: VOID/void_1500`), so the same
 `configs/dataset/*.yaml` works on every machine. An absolute `root:` overrides
 the variable if you need a one-off. Default when unset: `<repo>/../data`.
 
@@ -19,7 +19,7 @@ Nothing but the split files in `data/splits/` ever goes into git.
 
 ```
 $STAIR_DATA_ROOT/
-├── VOID/                # VOID, stair sequences        -> loader void_stairs
+├── VOID/void_1500/      # VOID, stair sequences        -> loader void_stairs
 ├── MinJiang-Dataset/    # dual-view RGB-D on stairs    -> loader minjiang
 ├── nyu_depth_v2/        # NYU Depth v2                 -> loader nyuv2
 ├── ZJUL5/               # ZJU-L5, real dToF            -> loader zju_l5
@@ -48,7 +48,7 @@ degradation model from `configs/degradation/` produces the network input.
 
 ## VOID
 
-`root: void_1500` · loader `void_stairs` · [github.com/alexklwong/void-dataset](https://github.com/alexklwong/void-dataset)
+`root: VOID/void_1500` · loader `void_stairs` · [github.com/alexklwong/void-dataset](https://github.com/alexklwong/void-dataset)
 
 The closest public analogue of our task: a **real** sparse depth input — points
 tracked by visual-inertial odometry, not a simulation — with dense ground truth,
@@ -180,7 +180,7 @@ The folder also holds `demo.zip`, `nyu.pt` and calibration data we do not use.
 
 ## HAMMER
 
-`root: hammer` · loader `hammer` · [github.com/Junggy/HAMMER-dataset](https://github.com/Junggy/HAMMER-dataset)
+`root: HAMMER` · loader `hammer` · [github.com/Junggy/HAMMER-dataset](https://github.com/Junggy/HAMMER-dataset)
 
 The only public dataset with an **active stereo** stream (RealSense D435 — the
 same sensing principle as the Astra 2), a dToF stream (L515), an I-ToF stream
@@ -191,12 +191,29 @@ changing the scene.
 13 scenes; 2–11 train, 12–14 test. Direct download, no registration (~50 GB):
 `http://www.campar.in.tum.de/public_datasets/2022_arxiv_jung/_dataset_processed.zip`
 
-> ⚠ The archive's internal folder naming is **not documented upstream**, so the
-> loader takes the subdirectory names from the config (`rgb_subdir`,
-> `gt_subdir`, `input_subdir` in `configs/dataset/hammer.yaml`), defaulting to
-> `rgb` / `gt` / `<sensor>`. After unpacking, look at the real tree and correct
-> the config; the loader errors with the directory names it actually found
-> rather than returning zero samples.
+The archive's naming is not documented upstream; this is what is actually in it:
+
+```
+HAMMER/<scene>_traj<n>_<m>/
+├── polarization/          # the RGB camera IS the polarization camera
+│   ├── rgb/<frame>.png            # what the loader reads as rgb_subdir
+│   ├── _gt/<frame>.png            # laser GT, gt_subdir
+│   ├── depth_d435/<frame>.png     # active stereo, input_subdir (default)
+│   ├── depth_l515/  depth_tof/    # the other two streams
+│   └── pol/  _instance/  _pose/
+├── d435/  l515_depth/  tof/   # same streams in each sensor's own frame
+└── extrinsics/
+```
+
+> ⚠ Read the streams from **`polarization/`**, not from the per-sensor folders.
+> The authors ship every depth stream already warped into the RGB frame there,
+> so rgb, GT and input are siblings and mutually registered. The per-sensor
+> folders hold the unwarped originals — using them means doing the projection
+> ourselves for no gain.
+
+The subdirectory names are config keys (`rgb_subdir`, `gt_subdir`,
+`input_subdir`), so switching sensor is a one-line override:
+`dataset.input_subdir=polarization/depth_l515`.
 
 Depth is uint16 millimetres. `input_sensor: d435` (active stereo, our analogue),
 `l515` (dToF) or `tof`.
