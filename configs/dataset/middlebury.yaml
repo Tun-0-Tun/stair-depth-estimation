@@ -1,0 +1,18 @@
+# Middlebury, 30 pairs -- the standard guided depth-SR test set.
+# From Depth_Enh.zip (01_Middlebury_Dataset), see docs/datasets.md.
+name: middlebury
+loader: middlebury
+root: Middlebury
+split: test
+# Upstream ships clean_/noisy_/output_ variants; the DSR literature uses output_.
+rgb_token: output_color
+depth_token: output_depth
+mod_crop: 16             # upstream crops to a multiple of 16 before evaluating
+# ⚠ NOT metres: depth is uint8/255, a normalised scale. Any metric from this
+# dataset is on [0,1] and is not comparable with VOID / ZJU-L5 / NYUv2 numbers.
+min_depth: 0.0
+max_depth: 1.01
+eval:
+  # DSR convention, the same 6-pixel border crop DuCos and WAVE report on.
+  crop: border6
+docs: docs/datasets.md#lu-and-middlebury

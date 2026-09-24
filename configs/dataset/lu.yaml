@@ -1,0 +1,17 @@
+# Lu, 6 pairs -- real ASUS Xtion Pro captures, the small companion to Middlebury.
+# From Depth_Enh.zip (03_RGBD_Dataset), see docs/datasets.md.
+# Upstream misspells the RGB token as "ouput_color"; we rename on copy, so the
+# token below is the corrected one. Same format as Middlebury otherwise.
+name: lu
+loader: lu
+root: Lu
+split: test
+rgb_token: output_color
+depth_token: output_depth
+mod_crop: 16
+# ⚠ NOT metres: depth is uint8/255, a normalised scale. See middlebury.yaml.
+min_depth: 0.0
+max_depth: 1.01
+eval:
+  crop: border6
+docs: docs/datasets.md#lu-and-middlebury

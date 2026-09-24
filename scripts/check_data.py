@@ -41,6 +41,13 @@ EXPECTED: dict[str, tuple[str, tuple[str, ...]]] = {
     "nyuv2": ("nyu_depth_v2", ("nyu_depth_v2_labeled.mat",)),
     "zju_l5": ("ZJUL5", ("data.json",)),
     "hammer": ("HAMMER", ()),
+    # Both come out of Depth_Enh.zip; one representative pair each is enough to
+    # catch a half-finished copy.
+    "middlebury": (
+        "Middlebury",
+        ("Middlebury_01_output_color.png", "Middlebury_01_output_depth.png"),
+    ),
+    "lu": ("Lu", ("RGBD_01_output_color.png", "RGBD_01_output_depth.png")),
 }
 
 

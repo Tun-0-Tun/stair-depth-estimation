@@ -23,7 +23,9 @@ $STAIR_DATA_ROOT/
 ├── MinJiang-Dataset/    # dual-view RGB-D on stairs    -> loader minjiang
 ├── nyu_depth_v2/        # NYU Depth v2                 -> loader nyuv2
 ├── ZJUL5/               # ZJU-L5, real dToF            -> loader zju_l5
-└── HAMMER/              # HAMMER, multi-sensor         -> loader hammer
+├── HAMMER/              # HAMMER, multi-sensor         -> loader hammer
+├── Middlebury/          # depth-SR test set, 30 pairs  -> loader middlebury
+└── Lu/                  # depth-SR test set, 6 pairs   -> loader lu
 ```
 
 Folder names are what `scripts/check_data.py` and the configs expect. Rename
@@ -39,6 +41,8 @@ all three of us, because a split file is a list of paths.
 | [NYUv2](#nyu-depth-v2) | general benchmark | none (simulate) | 640×480 | 640×480 | float m / normalised | filled Kinect |
 | [ZJU-L5](#zju-l5) | **DEPTHOR benchmark** | real 8×8 dToF | 640×480 | 8×8 zones | float m | stereo reconstruction |
 | [HAMMER](#hammer) | **sensor-gap study** | real, per sensor | 1224×1024 | per sensor | uint16 mm | laser |
+| [Middlebury](#lu-and-middlebury) | depth-SR comparison | none (simulate) | varies | varies | **uint8 / 255 → normalised** | structured light |
+| [Lu](#lu-and-middlebury) | depth-SR comparison | none (simulate) | varies | varies | **uint8 / 255 → normalised** | ASUS Xtion Pro |
 | `synthetic_stairs` | CI only | generated | any | any | — | generated |
 
 "Input: none (simulate)" means the dataset ships only ground truth, so a
@@ -217,6 +221,52 @@ The subdirectory names are config keys (`rgb_subdir`, `gt_subdir`,
 
 Depth is uint16 millimetres. `input_sensor: d435` (active stereo, our analogue),
 `l515` (dToF) or `tof`.
+
+## Lu and Middlebury
+
+`root: Middlebury` / `root: Lu` · loaders `middlebury` / `lu` · [web.cecs.pdx.edu/~fliu/project/depth-enhance](https://web.cecs.pdx.edu/~fliu/project/depth-enhance/)
+
+The two small test sets every guided depth-SR paper reports on, DuCos and WAVE
+included. Both ship in one 46 MB archive, `Depth_Enh.zip`, released with Lu et
+al., "Depth Enhancement via Low-Rank Matrix Completion" (CVPR 2014):
+
+```
+Depth_Enh/
+├── 01_Middlebury_Dataset/   30 pairs  -> Middlebury/
+├── 02_RGBZ_Dataset/          9 pairs  -> not part of the benchmark, skip
+└── 03_RGBD_Dataset/          6 pairs  -> Lu/
+```
+
+Each scene ships three variants — `clean_*`, `noisy_*`, `output_*`. Only
+`output_*` is used; the other two are the input and the intermediate result of
+the authors' own completion method. Lay them out flat:
+
+```
+Middlebury/<scene>_output_color.png   <scene>_output_depth.png     # 30 pairs
+Lu/<scene>_output_color.png           <scene>_output_depth.png     # 6 pairs
+```
+
+> ⚠ **Depth is not metric here.** It is an 8-bit PNG divided by 255 — a
+> normalised scale with no metres in it. This is the one exception to rule 4 in
+> `CLAUDE.md`, because the data has no metric scale to convert to. RMSE from
+> these two sets lives on `[0, 1]`; DuCos multiplies it by 100 and calls it
+> "centimetres". **Never put it in the same column as a metric RMSE** from VOID,
+> ZJU-L5 or NYUv2. `meta["depth_unit"]` says so on every sample.
+
+> ⚠ **`03_RGBD_Dataset` misspells the RGB files** as `ouput_color` (sic), while
+> its depth files are spelled correctly. Rename on copy:
+> ```bash
+> for f in 03_RGBD_Dataset/*ouput_color*; do
+>   cp "$f" "Lu/$(basename "$f" | sed 's/ouput_color/output_color/')"
+> done
+> ```
+> Do not teach the loader the typo — DuCos hard-codes `output_color` too, and
+> finds zero RGB frames in the archive as shipped.
+
+Both sets are GT-only, so they need a degradation: the published protocol is
+bicubic ×4/×8/×16, i.e. `--degradation bicubic_x8`. The loader crops to a
+multiple of 16 first (`mod_crop`), reproducing upstream's `modcrop`, because the
+published numbers are scored on the cropped frame.
 
 ---
 

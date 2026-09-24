@@ -256,3 +256,52 @@ def test_nyuv2_mat_layout_transposes_matlab_axes(tmp_path):
     assert np.allclose(sample["rgb"], images[1].transpose(2, 1, 0) / 255.0)
     assert sample["meta"]["sparse_source"] == "kinect_raw"
     validate_sample(sample, "nyuv2")
+
+
+def _write_depth_enhance_pair(root, stem, h=70, w=100):
+    """One scene in the Depth_Enh flat layout: uint8 RGB + uint8 depth."""
+    from PIL import Image
+
+    rng = np.random.default_rng(abs(hash(stem)) % 2**32)
+    Image.fromarray(rng.integers(0, 256, (h, w, 3), dtype=np.uint8)).save(
+        root / f"{stem}_output_color.png"
+    )
+    Image.fromarray(rng.integers(1, 256, (h, w), dtype=np.uint8)).save(
+        root / f"{stem}_output_depth.png"
+    )
+
+
+def test_depth_enhance_pairs_by_name_and_modcrops(tmp_path):
+    """Lu/Middlebury pair two independently sorted lists -- and crop to /16.
+
+    Both are silent failure modes: a mismatched pair scores depth against the
+    wrong photo, and a missing modcrop scores a different region than every
+    published number for these sets.
+    """
+    pytest.importorskip("PIL")
+
+    root = tmp_path / "Middlebury"
+    root.mkdir()
+    for stem in ("Middlebury_01", "Middlebury_02", "Middlebury_03"):
+        _write_depth_enhance_pair(root, stem)
+
+    ds = build_dataset(
+        {"loader": "middlebury", "root": str(root)},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert len(ds) == 3
+
+    sample = ds[0]
+    assert sample["gt_depth"].shape == (64, 96), "70x100 must be cropped to a multiple of 16"
+    assert sample["rgb"].shape == (64, 96, 3)
+    assert 0.0 < float(sample["gt_depth"].max()) <= 1.0, "depth is uint8/255, not metres"
+    assert sample["meta"]["dataset"] == "middlebury", "name comes from the directory"
+    assert "NOT metres" in sample["meta"]["depth_unit"]
+    validate_sample(sample, "middlebury")
+
+    # A stray extra RGB must fail loudly, not shift every pair by one.
+    (root / "Middlebury_04_output_color.png").write_bytes(
+        (root / "Middlebury_01_output_color.png").read_bytes()
+    )
+    with pytest.raises(FileNotFoundError, match="files but"):
+        build_dataset({"loader": "middlebury", "root": str(root)})
