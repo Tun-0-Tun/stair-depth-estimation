@@ -6,3 +6,6 @@
 	path = third_party/ducos
 	url = https://github.com/yanzq95/DuCos.git
 	ignore = dirty
+[submodule "third_party/wave"]
+	path = third_party/wave
+	url = https://github.com/tayyabnasir22/WAVE.git

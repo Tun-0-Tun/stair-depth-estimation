@@ -49,7 +49,10 @@ repos:
       # Rule 1 of CONTRIBUTING.md, enforced mechanically.
       - id: single-metric-implementation
         name: no metric implementations outside metrics/
-        entry: python scripts/check_single_metrics.py
+        # python3, not python: `language: system` inherits the PATH git was
+        # launched with, where the project venv is not active and Ubuntu ships
+        # no bare `python`. The script is stdlib-only, so any python3 will do.
+        entry: python3 scripts/check_single_metrics.py
         language: system
         types: [python]
         pass_filenames: true

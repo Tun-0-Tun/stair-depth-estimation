@@ -1,0 +1,4 @@
+type: bicubic_sr
+scale: 32
+mode: bicubic
+noisy: false

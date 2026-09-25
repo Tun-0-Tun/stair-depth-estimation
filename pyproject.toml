@@ -21,6 +21,7 @@ dependencies = [
     "pyyaml>=6.0",
     "pandas>=2.0",
     "tqdm>=4.65",
+    "pywavelets>=1.8.0",
 ]
 
 [dependency-groups]
@@ -46,6 +47,9 @@ baselines = [
     "h5py>=3.8",               # NYUv2 (.h5 pack) and ZJU-L5 loaders
     "huggingface-hub>=0.20",   # DuCos checkpoints
     "accelerate>=0.25",        # DEPTHOR training entry point
+    "pytorch-wavelets",        # WAVE Components/WAVE.py imports DWTForward (pulls in PyWavelets)
+#    "pytorch-msssim",          # WAVE Utilities/Evaluation.py imports ssim
+#    "tensorboardX",            # WAVE Utilities/Logger.py imports SummaryWriter
 ]
 
 # Optional experiment trackers. Never a hard dependency - not everyone has an account.

@@ -1,0 +1,25 @@
+# WAVE x16 guided depth SR on NYUv2 (synthetic bicubic protocol).
+defaults:
+  - dataset: nyuv2
+  - model: wave
+  - degradation: bicubic_x16
+
+seed: 0
+device: auto
+dataset:
+  layout: npy
+model:
+  checkpoint: checkpoints/wave/NYU16x.pth
+  scale: 16
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "min/max from the LR input, not GT as upstream; rgb_norm unverified"

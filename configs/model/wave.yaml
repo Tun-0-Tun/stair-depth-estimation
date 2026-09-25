@@ -1,0 +1,17 @@
+name: wave
+adapter: wave
+available: true
+paper: "Nasir et al., WAVE, 2026 (arXiv:2601.17723)"
+submodule: third_party/wave
+# One checkpoint per scale; only x8 / x16 / x32 are supported. The weights do not
+# encode the scale, so scale and checkpoint must be changed together:
+#   x8  -> checkpoints/wave/NYU8x.pth   (upstream model_states_WAVE_HYPERSIM_Patch_448_Scale_8, trained on HyperSim)
+#   x16 -> checkpoints/wave/NYU16x.pth  (upstream model_states_WAVE_NYUV2_Patch_448_Scale_16)
+#   x32 -> checkpoints/wave/NYU32x.pth  (upstream model_states_WAVE_NYUV2_Patch_448_Scale_32)
+#   override:  model.scale=16 model.checkpoint=checkpoints/wave/NYU16x.pth
+scale: 8
+num_feats: 48
+# imagenet | unit -- upstream's RGB standardisation is unverified, see baselines/wave_adapter.py
+rgb_norm: imagenet
+checkpoint: checkpoints/wave/NYU8x.pth
+docs: docs/metrics_protocol.md#baseline-availability
