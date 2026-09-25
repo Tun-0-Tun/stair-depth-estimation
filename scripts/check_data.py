@@ -48,6 +48,12 @@ EXPECTED: dict[str, tuple[str, tuple[str, ...]]] = {
         ("Middlebury_01_output_color.png", "Middlebury_01_output_depth.png"),
     ),
     "lu": ("Lu", ("RGBD_01_output_color.png", "RGBD_01_output_depth.png")),
+    # The camera CSV ships with the upstream repo, not the image download, and
+    # without it the ray-distance conversion has no matrix -- check it here.
+    "hypersim": (
+        "hypersim",
+        ("metadata_camera_parameters.csv", "ai_001_001/images"),
+    ),
 }
 
 

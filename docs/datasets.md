@@ -25,7 +25,8 @@ $STAIR_DATA_ROOT/
 ├── ZJUL5/               # ZJU-L5, real dToF            -> loader zju_l5
 ├── HAMMER/              # HAMMER, multi-sensor         -> loader hammer
 ├── Middlebury/          # depth-SR test set, 30 pairs  -> loader middlebury
-└── Lu/                  # depth-SR test set, 6 pairs   -> loader lu
+├── Lu/                  # depth-SR test set, 6 pairs   -> loader lu
+└── hypersim/            # synthetic indoor, dense GT   -> loader hypersim
 ```
 
 Folder names are what `scripts/check_data.py` and the configs expect. Rename
@@ -43,6 +44,7 @@ all three of us, because a split file is a list of paths.
 | [HAMMER](#hammer) | **sensor-gap study** | real, per sensor | 1224×1024 | per sensor | uint16 mm | laser |
 | [Middlebury](#lu-and-middlebury) | depth-SR comparison | none (simulate) | varies | varies | **uint8 / 255 → normalised** | structured light |
 | [Lu](#lu-and-middlebury) | depth-SR comparison | none (simulate) | varies | varies | **uint8 / 255 → normalised** | ASUS Xtion Pro |
+| [Hypersim](#hypersim) | **synthetic pre-training** | none (simulate) | 1024×768 | 1024×768 | float m, **ray distance** | exact (rendered) |
 | `synthetic_stairs` | CI only | generated | any | any | — | generated |
 
 "Input: none (simulate)" means the dataset ships only ground truth, so a
@@ -267,6 +269,66 @@ Both sets are GT-only, so they need a degradation: the published protocol is
 bicubic ×4/×8/×16, i.e. `--degradation bicubic_x8`. The loader crops to a
 multiple of 16 first (`mod_crop`), reproducing upstream's `modcrop`, because the
 published numbers are scored on the cropped frame.
+
+## Hypersim
+
+`root: hypersim` · loader `hypersim` · [apple-aiml-research/ml-hypersim](https://github.com/apple-aiml-research/ml-hypersim)
+
+457 scenes of photorealistic path-traced interiors, 769 camera trajectories,
+74 619 frames at 1024×768. The only source here with **dense, noise-free**
+ground truth, which is exactly what the degradation models in
+`data/degradation/` need: everything else either has holes or *is* the sensor
+under test.
+
+The full release is ~1.9 TB across per-scene zips. Do not use the official
+`dataset_download_images.py` — it has no filters and pulls everything. Use
+`contrib/99991/download.py`, which reads the remote zips over HTTP range
+requests and extracts only matching entries:
+
+```bash
+git clone --depth 1 https://github.com/apple-aiml-research/ml-hypersim ~/ml-hypersim
+cd ~/ml-hypersim/contrib/99991
+H=$STAIR_DATA_ROOT/hypersim
+./download.py --contains geometry_hdf5 --contains depth_meters --directory "$H" --silent
+./download.py --contains final_preview --contains color.jpg    --directory "$H" --silent
+./download.py --contains _detail                               --directory "$H" --silent
+cp ~/ml-hypersim/contrib/mikeroberts3000/metadata_camera_parameters.csv "$H"/
+```
+
+`--contains` flags combine with AND, so each modality needs its own pass. Bare
+`--contains depth_meters` matches twice per frame (the `.hdf5` and a preview
+`.png`), hence the `geometry_hdf5` qualifier. Re-running resumes: existing files
+are skipped unless `--overwrite`.
+
+```
+hypersim/
+├── metadata_camera_parameters.csv            # from the repo, NOT the download
+└── ai_VVV_NNN/
+    ├── _detail/cam_XX/metadata_camera.csv
+    └── images/
+        ├── scene_cam_XX_geometry_hdf5/frame.NNNN.depth_meters.hdf5
+        ├── scene_cam_XX_geometry_hdf5/frame.NNNN.normal_cam.hdf5   # optional
+        └── scene_cam_XX_final_preview/frame.NNNN.color.jpg
+```
+
+> ⚠ **`depth_meters` is the distance to the optical centre, not planar Z.** A
+> corner pixel reads several per cent deep. The loader converts using each
+> scene's own `M_cam_from_uv` from `metadata_camera_parameters.csv`. The widely
+> copied `focal = 886.81` one-liner assumes the default field of view, which not
+> every scene uses — that is why the matrix is read rather than hard-coded.
+
+> ⚠ **457 scenes, not the 461 of the paper.** The authors excluded some frames
+> by hand, which removed a few scenes entirely. A complete download has exactly
+> 74 619 depth files; check that number, not the scene count.
+
+Other traps: pixels with no geometry are `NaN` upstream and become 0 here;
+the ~97 frames of one trajectory are views of the same room, so subsample with
+`frame_stride` and split by scene, never by frame; semantics are NYU40, which
+has **no stairs class** (they fall under `otherstructure`), so stair scenes
+cannot be selected by label.
+
+Normals (`normal_cam`) are indexed when downloaded and their path is exposed as
+`meta["normal_path"]`, but they are not part of the sample contract.
 
 ---
 

@@ -305,3 +305,32 @@ def test_depth_enhance_pairs_by_name_and_modcrops(tmp_path):
     )
     with pytest.raises(FileNotFoundError, match="files but"):
         build_dataset({"loader": "middlebury", "root": str(root)})
+
+
+def test_hypersim_ray_distance_becomes_planar_depth():
+    """Hypersim stores distance to the optical centre, not Z.
+
+    Silent failure mode: skip the conversion and every frame reads a few per
+    cent deep towards the corners, systematically, with nothing to notice.
+    Pin it against the closed-form pinhole result.
+    """
+    from data.loaders.hypersim import _planar_scale
+
+    h, w, focal = 24, 32, 40.0
+    # M_cam_from_uv for a pinhole: u,v in [-1,1] span the frame, camera looks -z.
+    m = np.array([[w / 2, 0.0, 0.0], [0.0, h / 2, 0.0], [0.0, 0.0, -focal]])
+    scale = _planar_scale(m, h, w)
+
+    assert scale.shape == (h, w)
+    assert (scale <= 1.0 + 1e-6).all(), "planar depth can never exceed the ray distance"
+
+    # Same thing written directly: planar = d * f / ||(x, y, f)|| in pixels.
+    x = np.linspace(-w / 2 + 0.5, w / 2 - 0.5, w)[None, :]
+    y = np.linspace(-h / 2 + 0.5, h / 2 - 0.5, h)[:, None]
+    expected = focal / np.sqrt(x**2 + y**2 + focal**2)
+    assert np.allclose(scale, expected, atol=1e-6)
+
+    # The centre of the frame looks straight down the axis: no correction there,
+    # while a corner is measurably shorter.
+    assert scale[h // 2, w // 2] == pytest.approx(scale.max(), rel=1e-3)
+    assert scale[0, 0] < 0.95

@@ -1,0 +1,19 @@
+# Hypersim: 457 synthetic indoor scenes, dense noise-free GT.
+# Our clean input for the Astra 2 degradation model -- see docs/datasets.md.
+name: hypersim
+loader: hypersim
+root: hypersim
+split: test
+# Ships with the upstream repo, not with the image download:
+#   cp ~/ml-hypersim/contrib/mikeroberts3000/metadata_camera_parameters.csv \
+#      $STAIR_DATA_ROOT/hypersim/
+camera_params: metadata_camera_parameters.csv
+# ~97 frames per camera trajectory are views of one room and highly correlated.
+# Raise this for training; 1 keeps every frame.
+frame_stride: 1
+scenes: null             # e.g. [ai_001_001, ai_001_002] to restrict
+min_depth: 0.001
+max_depth: 20.0
+eval:
+  crop: none
+docs: docs/datasets.md#hypersim
