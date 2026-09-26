@@ -1,0 +1,13 @@
+# Projector shadows (shadow mapping from a virtual IR projector) - NOT CALIBRATED.
+# offset_t is a PLACEHOLDER chosen to show holes below stair nosings, not the
+# measured Astra 2 projector position. Any result produced with this file must
+# carry "uncalibrated" in the notes column.
+type: projector_shadow
+offset_t: [0.0, -0.04, 0.0]   # projector centre in the camera frame, metres (x right, y down, z fwd)
+fx: 570.0                     # pixels, for 640x480; rescale with the image
+fy: null                      # pixels; null -> fx
+cx: null                      # pixels; null -> image centre
+cy: null
+depth_tol_rel: 0.01
+slope_bias: 1.5
+fov_clip: false
