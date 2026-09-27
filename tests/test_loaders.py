@@ -358,3 +358,29 @@ def test_dtof_footprint_is_exactly_what_fill_ratio_asks_for():
     zone_h = zone_w = 64 // 8
     per_zone = round(zone_h * 0.5) * round(zone_w * 0.5)
     assert (wide["sparse_depth"] > 0).sum() == wide["meta"]["n_zones_reported"] * per_zone
+
+
+def test_zero_byte_file_raises_oserror_not_something_else(tmp_path):
+    """The run loop forgives OSError only, so an unreadable frame must raise one.
+
+    An interrupted copy onto the shared data folder leaves zero-byte files --
+    MinJiang has two out of 909. PIL's UnidentifiedImageError is an OSError, so
+    scripts/run_baseline.py counts the frame and carries on; if a loader ever
+    wrapped it in something else, a 909-frame run would die at frame 901 again.
+    """
+    pytest.importorskip("PIL")
+
+    root = tmp_path / "Middlebury"
+    root.mkdir()
+    _write_depth_enhance_pair(root, "Middlebury_01")
+    (root / "Middlebury_02_output_color.png").write_bytes(b"")
+    (root / "Middlebury_02_output_depth.png").write_bytes(b"")
+
+    ds = build_dataset(
+        {"loader": "middlebury", "root": str(root)},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert len(ds) == 2
+    validate_sample(ds[0], "good frame still loads")
+    with pytest.raises(OSError):
+        ds[1]

@@ -165,14 +165,36 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # ---- evaluate ---------------------------------------------------------
     acc = DepthMetricAccumulator(metric_cfg, pooling=str(eval_cfg.get("pooling", "image")))
+    unreadable: list[str] = []
     for i in range(len(dataset)):
-        sample = dataset[i]
+        try:
+            sample = dataset[i]
+        except OSError as exc:
+            # A single truncated file on the shared data folder must not throw
+            # away a run that is twenty minutes in -- an interrupted copy leaves
+            # zero-byte files, and MinJiang has two. Count and name them instead;
+            # the count reaches the results row, so a short run can never be
+            # mistaken for a complete one. Only *reading* is forgiven here: a
+            # model or metric failure still stops everything.
+            unreadable.append(f"{i}: {exc}")
+            if len(unreadable) <= 5:
+                print(f"  [skip] unreadable sample {i}: {exc}")
+            continue
         pred = model.predict_sample(sample)
         acc.update(pred, sample["gt_depth"], sample["mask"], sample["meta"]["sample_id"])
         if (i + 1) % 50 == 0 or i + 1 == len(dataset):
             print(f"  [{i + 1}/{len(dataset)}] {format_metrics(acc.compute())}")
 
+    if unreadable:
+        print(
+            f"[data] {len(unreadable)} of {len(dataset)} samples could not be read and were "
+            f"skipped; n_unreadable is recorded in the results row"
+        )
+    if len(unreadable) == len(dataset):
+        raise SystemExit("[data] every sample failed to load; nothing was scored")
+
     summary: dict[str, Any] = acc.compute()
+    summary["n_unreadable"] = len(unreadable)
 
     # ---- runtime ----------------------------------------------------------
     if cfg.get("runtime", {}).get("measure", True) and len(dataset):

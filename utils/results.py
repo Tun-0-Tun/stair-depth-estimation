@@ -40,6 +40,7 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     "device",
     "n_samples",
     "n_skipped",
+    "n_unreadable",
     *METRIC_NAMES,
     "fps",
     "latency_ms_median",

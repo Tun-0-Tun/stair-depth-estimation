@@ -143,6 +143,22 @@ uv run python scripts/run_benchmark.py --auto       # skip cells that cannot run
 ```
 
 Writes `experiments/results/table_<stamp>.{md,csv}` — dataset × method × metric.
+
+**Unreadable frames do not abort a run.** An interrupted copy onto the shared
+data folder leaves zero-byte files — MinJiang currently has two of 909. Such a
+frame is skipped, named on stdout, and counted in the `n_unreadable` column of
+`benchmark.csv`, so a short run is never mistaken for a complete one. Only
+reading is forgiven: a model or metric failure still stops everything. Find them
+before a long run with:
+
+```bash
+uv run python -c "
+from pathlib import Path
+import sys
+bad = [f for f in Path(sys.argv[1]).rglob('*.png') if f.stat().st_size == 0]
+print(len(bad), 'zero-byte files'); [print(' ', f) for f in bad[:20]]
+" \$STAIR_DATA_ROOT/MinJiang-Dataset
+```
 Pick the columns with `--metrics absrel rmse delta1 fps`.
 
 A cell that could not run appears as `NOT RUN: <reason>`, never as a blank.
