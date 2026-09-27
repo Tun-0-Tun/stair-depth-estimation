@@ -47,7 +47,9 @@ baselines = [
     "h5py>=3.8",               # NYUv2 (.h5 pack) and ZJU-L5 loaders
     "huggingface-hub>=0.20",   # DuCos checkpoints
     "accelerate>=0.25",        # DEPTHOR training entry point
+    "gdown>=6.2.0",            # DEPTHOR + WAVE weights live on Google Drive
     "pytorch-wavelets",        # WAVE Components/WAVE.py imports DWTForward (pulls in PyWavelets)
+    "setuptools<81",           # pytorch_wavelets imports pkg_resources, gone in setuptools 81
 #    "pytorch-msssim",          # WAVE Utilities/Evaluation.py imports ssim
 #    "tensorboardX",            # WAVE Utilities/Logger.py imports SummaryWriter
 ]
