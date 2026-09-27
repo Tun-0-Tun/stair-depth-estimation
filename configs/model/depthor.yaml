@@ -5,6 +5,13 @@ paper: "Xiang et al., DEPTHOR, ICCV 2025 (arXiv:2504.01596)"
 submodule: third_party/depthor
 variant: large            # large -> src/models/depthor.py, small -> depthor_s.py
 n_bins: 256
+# The bin grid, NOT an evaluation window. depthor.py sums over n_bins centres
+# spanning [min_depth, max_depth]; the released weights were trained with these
+# two values, so changing them decodes the learned logits to the wrong depths.
+# Measured: running on void_stairs with the dataset's 0.2 instead of 0.001 moved
+# delta2 by 12 points. run_baseline.py takes these in preference to eval.*.
+min_depth: 0.001
+max_depth: 10.0
 checkpoint: checkpoints/depthor/depthor_zju_large.pt
 depth_anything_ckpt: checkpoints/depth_anything_v2_vits.pth
 # Requires the BpOps CUDA extension (BP-Net, CUDA 12.1). There is no CPU/MPS build.

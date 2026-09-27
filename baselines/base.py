@@ -50,6 +50,7 @@ __all__ = [
     "BaselineModel",
     "add_third_party_to_path",
     "build_baseline",
+    "model_depth_range",
     "register_baseline",
 ]
 
@@ -196,12 +197,34 @@ def add_third_party_to_path(name: str) -> Path:
     path = THIRD_PARTY / name
     if not path.exists() or not any(path.iterdir()):
         raise RuntimeError(
-            f"third_party/{name} is empty. Run:\n" "    git submodule update --init --recursive"
+            f"third_party/{name} is empty. Run:\n    git submodule update --init --recursive"
         )
     p = str(path)
     if p not in sys.path:
         sys.path.insert(0, p)
     return path
+
+
+def model_depth_range(
+    model_cfg: Mapping[str, Any], eval_min: float, eval_max: float
+) -> tuple[float, float]:
+    """The depth range to *construct* the model with, which is not the eval window.
+
+    For most baselines the two coincide and the evaluation window is a fine
+    default.  For DEPTHOR they must not: its head sums over ``n_bins`` centres
+    spanning ``[min_depth, max_depth]``, so those numbers are a property of the
+    checkpoint.  Scoring on a dataset whose window is narrower (``void_stairs``
+    starts at 0.2 m, ``hammer`` at 0.1, ``middlebury`` at 0.0) would otherwise
+    silently re-space the bins and decode the learned logits to the wrong
+    depths -- measured on void_stairs, that alone moved delta2 by 12 points.
+
+    A ``configs/model/*.yaml`` states its own range when the checkpoint has one;
+    otherwise the evaluation window is used, so existing configs are unchanged.
+    """
+    return (
+        float(model_cfg.get("min_depth", eval_min)),
+        float(model_cfg.get("max_depth", eval_max)),
+    )
 
 
 def build_baseline(cfg: Mapping[str, Any], **overrides: Any) -> BaselineModel:

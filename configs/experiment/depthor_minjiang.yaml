@@ -1,0 +1,35 @@
+# DEPTHOR v1 on MinJiang stairs, simulated 8x8 dToF.
+#
+# Zero-shot: the weights are trained on ZJU-L5, never on MinJiang.
+#
+# The degradation MUST be dtof_l5_center, not dtof_l5. DEPTHOR expects one pixel
+# per zone, its own dtof_to_sparse_depth convention; dtof_l5 writes 0.6 of the
+# zone footprint and the model, handed input three orders of magnitude denser
+# than it ever saw, over-predicts by 2-4x. Measured on 10 frames:
+#
+#   degradation        absrel   rmse    delta1   silog   pred/gt
+#   dtof_l5            2.8000   4.5328  0.0176   42.87   1.88..4.57
+#   dtof_l5_center      .1560    .7741   .8144   25.11   0.87..0.99
+#   nn_fill (floor)     .2152   1.3382   .6776   44.55   --
+#
+# The eval window is MinJiang's own range; the bin grid comes from
+# configs/model/depthor.yaml and is independent of it.
+defaults:
+  - dataset: minjiang
+  - model: depthor
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.3
+  max_depth: 8.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "zero-shot from ZJU-L5; simulated dToF (uncalibrated); GT is the sensor itself, so optimistic"

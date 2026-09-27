@@ -198,3 +198,32 @@ def test_upstream_adapter_real_inference(key, sample):
     assert float(pred.min()) >= 0.3 and float(pred.max()) <= 8.0
     # a real model must not collapse to a constant
     assert float(pred.std()) > 1e-3
+
+
+def test_model_depth_range_is_independent_of_the_eval_window():
+    """A checkpoint's depth range must not follow the dataset being scored.
+
+    DEPTHOR decodes depth as a weighted sum of bin centres spanning
+    [min_depth, max_depth]. Letting a narrow evaluation window re-space those
+    bins does not raise anything -- it just returns wrong depths.
+    """
+    from baselines.base import model_depth_range
+    from utils.config import load_config
+
+    # stated by the model config -> used verbatim, whatever the eval window is
+    depthor = dict(load_config("model", "depthor"))
+    assert depthor["min_depth"] == 0.001, "depthor.yaml must pin the checkpoint's bin grid"
+    assert model_depth_range(depthor, 0.2, 8.0) == (0.001, 10.0)
+    assert model_depth_range(depthor, 0.0, 1.01) == (0.001, 10.0)
+
+    # not stated -> fall back to the eval window, as every other baseline does
+    assert model_depth_range({"adapter": "bicubic"}, 0.2, 8.0) == (0.2, 8.0)
+
+
+def test_depthor_minjiang_experiment_uses_the_centre_footprint():
+    """dtof_l5 hands DEPTHOR ~1700 px per zone instead of 1 and it over-predicts 2-4x."""
+    from utils.config import load_experiment
+
+    cfg = load_experiment("depthor_minjiang")
+    assert cfg["degradation"]["type"] == "dtof_sim"
+    assert cfg["degradation"]["fill_ratio"] == 0.0, "must be the one-pixel-per-zone variant"

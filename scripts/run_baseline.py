@@ -31,7 +31,7 @@ from typing import Any
 
 import _bootstrap  # noqa: F401  (must come first: puts the repo root on sys.path)
 
-from baselines.base import BASELINE_REGISTRY, build_baseline
+from baselines.base import BASELINE_REGISTRY, build_baseline, model_depth_range
 from data.degradation import build_degradation
 from data.loaders import build_dataset
 from metrics.depth_metrics import METRIC_NAMES, DepthMetricAccumulator, MetricConfig, format_metrics
@@ -143,11 +143,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     # ---- model ------------------------------------------------------------
+    # A model's depth range is not the evaluation window.  DEPTHOR's head sums
+    # over bins spanning [min_depth, max_depth], so for it those two numbers are
+    # a property of the *checkpoint*: scoring on a dataset with a narrower window
+    # must not move them, or the learned bin logits decode to the wrong depths.
+    # A configs/model/*.yaml may therefore state its own range, and only when it
+    # does not do we fall back to the metric window (which keeps every existing
+    # config behaving exactly as before).
+    m_min, m_max = model_depth_range(model_cfg, metric_cfg.min_depth, metric_cfg.max_depth)
     model = build_baseline(
-        model_cfg,
-        device=cfg.get("device", "auto"),
-        min_depth=metric_cfg.min_depth,
-        max_depth=metric_cfg.max_depth,
+        model_cfg, device=cfg.get("device", "auto"), min_depth=m_min, max_depth=m_max
     )
     model.load(model_cfg.get("checkpoint"))
     print(f"[model] {model.describe()}")

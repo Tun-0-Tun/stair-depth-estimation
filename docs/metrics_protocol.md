@@ -189,6 +189,44 @@ Weights: both `Depthor-ZJU-Large` and `-Small` download with `gdown` from the
 Google Drive links in `third_party/depthor/README.md` — see
 [datasets.md](datasets.md#checkpoints).
 
+### DEPTHOR v1 off ZJU-L5 — feed it the right sparsity, or the number is meaningless
+
+DEPTHOR consumes the sparse map directly, and it was trained on exactly one
+convention: **one pixel per dToF zone**, its own `dtof_to_sparse_depth`, which
+`footprint: center` reproduces for real ZJU-L5 data. Give it anything denser and
+it stops using the measurements and falls back on its learned depth prior. It
+does not warn, and the failure looks like a bad method rather than a bad input.
+
+Measured on 10 MinJiang frames, everything else held fixed, varying only the
+zone footprint (`configs/degradation/dtof_l5*.yaml`):
+
+| input | absrel | rmse | δ1 | silog | pred/gt |
+|---|---|---|---|---|---|
+| `dtof_l5` — 0.6 of the zone, ~1700 px/zone | 2.8000 | 4.5328 | 0.0176 | 42.87 | 1.88–4.57 |
+| `dtof_l5_center` — 1 px/zone | **0.1560** | **0.7741** | **0.8144** | **25.11** | 0.87–0.99 |
+| `nn_fill` on the same input (floor) | 0.2152 | 1.3382 | 0.6776 | 44.55 | — |
+
+So: **use `dtof_l5_center` for any DEPTHOR-family model.** With it, DEPTHOR
+beats the floor on every metric and its absolute scale sits on the measurements
+(pred/gt ≈ 0.9–1.0) on a dataset it never saw. `nn_fill` cannot tell the two
+apart — after nearest-neighbour densification both give the same piecewise
+constant 8×8 map — so the floor does not reveal the problem.
+
+The same reasoning limits VOID: its ~740 scattered VIO points are neither a zone
+grid nor a dense LR map, and DEPTHOR over-predicts there by a constant ~1.5×
+across every frame. Zone-structured input is what this family needs; a VOID
+number is out-of-distribution and must be labelled as such.
+
+#### The bin grid is not the evaluation window
+
+DEPTHOR's head sums over `n_bins` centres spanning `[min_depth, max_depth]`, so
+those two numbers belong to the *checkpoint*, not to the dataset being scored.
+`configs/model/depthor.yaml` pins them at 0.001/10.0 and
+[`model_depth_range`](../baselines/base.py) takes them in preference to `eval.*`;
+without that, running on `void_stairs` (window starts at 0.2) re-spaced the bins
+and moved δ2 by 12 points, silently. Baselines that do not state a range keep
+using the evaluation window.
+
 ### DuCos — runnable
 
 Verified end-to-end on 2026-09-01 with the official `x4.pth.tar` checkpoint,
