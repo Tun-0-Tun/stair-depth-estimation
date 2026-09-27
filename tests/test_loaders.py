@@ -334,3 +334,27 @@ def test_hypersim_ray_distance_becomes_planar_depth():
     # while a corner is measurably shorter.
     assert scale[h // 2, w // 2] == pytest.approx(scale.max(), rel=1e-3)
     assert scale[0, 0] < 0.95
+
+
+def test_dtof_footprint_is_exactly_what_fill_ratio_asks_for():
+    """fill_ratio must be able to write a single pixel per zone.
+
+    That is DEPTHOR's own convention, and feeding it the 0.6-footprint variant
+    instead gives ~1700 pixels per zone -- three orders of magnitude denser than
+    its training input, which silently sends the model back to its depth prior.
+    """
+    gt = np.full((64, 64), 2.0, dtype=np.float32)
+
+    centre = build_degradation(
+        {"type": "dtof_sim", "zones_h": 8, "zones_w": 8, "fill_ratio": 0.0, "zone_dropout": 0.0}
+    )(gt, seed=0)
+    n_zones = centre["meta"]["n_zones_reported"]
+    assert (centre["sparse_depth"] > 0).sum() == n_zones, "fill_ratio=0 must write 1 px per zone"
+
+    # And a wide footprint writes the requested patch, not one pixel more.
+    wide = build_degradation(
+        {"type": "dtof_sim", "zones_h": 8, "zones_w": 8, "fill_ratio": 0.5, "zone_dropout": 0.0}
+    )(gt, seed=0)
+    zone_h = zone_w = 64 // 8
+    per_zone = round(zone_h * 0.5) * round(zone_w * 0.5)
+    assert (wide["sparse_depth"] > 0).sum() == wide["meta"]["n_zones_reported"] * per_zone

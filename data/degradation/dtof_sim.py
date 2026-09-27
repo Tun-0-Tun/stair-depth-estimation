@@ -100,12 +100,19 @@ class DToFSimDegradation(BaseDegradation):
                 if not (self.z_min < d < self.z_max):
                     continue
 
-                # write the confidence footprint at the zone centre
+                # Write the confidence footprint at the zone centre, exactly
+                # ph x pw pixels.  The `+ 1` this used to have made every patch
+                # one pixel wider than asked for, and -- worse -- put a single
+                # pixel out of reach: fill_ratio=0 still wrote 2x2.  One pixel
+                # per zone is DEPTHOR's own convention (see dtof_l5_center.yaml),
+                # so it has to be expressible.
                 cy, cx = (ya + yb) / 2.0, (xa + xb) / 2.0
                 ph = max(1, round((yb - ya) * self.fill_ratio))
                 pw = max(1, round((xb - xa) * self.fill_ratio))
-                sy = slice(max(0, int(cy - ph / 2)), min(h, int(cy + ph / 2) + 1))
-                sx = slice(max(0, int(cx - pw / 2)), min(w, int(cx + pw / 2) + 1))
+                y0p = round(cy - ph / 2.0)
+                x0p = round(cx - pw / 2.0)
+                sy = slice(max(0, y0p), min(h, y0p + ph))
+                sx = slice(max(0, x0p), min(w, x0p + pw))
                 sparse[sy, sx] = np.float32(d)
                 n_reported += 1
 

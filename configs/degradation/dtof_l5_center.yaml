@@ -1,0 +1,22 @@
+# 8x8 dToF written as ONE pixel per zone -- DEPTHOR's own convention.
+#
+# Use this, not dtof_l5, whenever a DEPTHOR-family model is involved. Their
+# dtof_to_sparse_depth puts a single pixel at each zone centre, which is also
+# what `footprint: center` reproduces for the real ZJU-L5 data. dtof_l5 writes
+# 0.6 of the zone footprint instead -- ~1700 pixels per zone, three orders of
+# magnitude denser than anything the released weights were trained on, which
+# makes the model fall back on its learned depth prior.
+#
+# Everything else is identical to dtof_l5, so the pair isolates exactly one
+# variable: the footprint.
+type: dtof_sim
+zones_h: 8
+zones_w: 8
+fov_fraction: 1.0
+peak_selection: strongest
+sigma_base_m: 0.010
+sigma_per_m: 0.012
+z_min: 0.2
+z_max: 4.0
+zone_dropout: 0.05
+fill_ratio: 0.0          # -> max(1, 0) = one pixel per zone

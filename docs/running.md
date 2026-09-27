@@ -54,7 +54,7 @@ uv run python scripts/run_baseline.py experiment=depthor_zju_l5 eval.max_samples
 |---|---|---|
 | model | `configs/model/*.yaml` | `bicubic` `nn_fill` `ducos` `depthor` `depthor_plus_plus` `ours` |
 | dataset | `configs/dataset/*.yaml` | `void_stairs` `minjiang` `zju_l5` `nyuv2` `hammer` `synthetic_stairs` |
-| degradation | `configs/degradation/*.yaml` | `none` `identity` `astra2_uncalibrated` `dtof_l5` `bicubic_x4` `bicubic_x8` `random_sparse_500` |
+| degradation | `configs/degradation/*.yaml` | `none` `identity` `astra2_uncalibrated` `dtof_l5` `dtof_l5_center` `bicubic_x4` `bicubic_x8` `bicubic_x16` `bicubic_x32` `random_sparse_500` |
 | experiment | `configs/experiment/*.yaml` | `smoke` `depthor_zju_l5` `ducos_nyuv2_x4` |
 
 **When do I need `--degradation`?** Only for datasets that ship ground truth
@@ -112,6 +112,12 @@ uv run python scripts/run_baseline.py --model ducos --dataset void_stairs \
 
 # What does our Astra 2 simulation do to a method? Same data, two sensor models.
 uv run python scripts/run_baseline.py --model nn_fill --dataset minjiang --degradation dtof_l5
+
+# ⚠ For a DEPTHOR-family model use dtof_l5_center, not dtof_l5: they expect one
+# pixel per zone. dtof_l5 writes 0.6 of the zone footprint (~1700 px/zone) and the
+# model falls back on its learned depth prior, over-predicting by 2-4x.
+uv run python scripts/run_baseline.py --model depthor --dataset minjiang \
+    --degradation dtof_l5_center eval.min_depth=0.001 eval.max_depth=10.0
 uv run python scripts/run_baseline.py --model nn_fill --dataset minjiang --degradation astra2_uncalibrated
 
 # Sanity anchor: input == ground truth, so every metric must come out perfect.
