@@ -1,0 +1,24 @@
+# DuCos on a REAL low-res sensor. x4 weights on a 7.5x input: out of distribution in scale, label it.
+# ARKitScenes upsampling Validation: real iPad LiDAR 256x192 in, Faro laser GT 1920x1440
+defaults:
+  - dataset: arkitscenes
+  - model: ducos
+  - degradation: none
+
+seed: 0
+device: auto
+model:
+  checkpoint: checkpoints/ducos/x4.pth.tar
+  scale: 4
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.05
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "real LiDAR input, laser GT; zero-shot; x4 weights on 7.5x input"

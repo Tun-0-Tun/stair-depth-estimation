@@ -1,0 +1,24 @@
+# WAVE x8 on a REAL low-res sensor. Native ratio is 7.5; the adapter resamples to H/8.
+# ARKitScenes upsampling Validation: real iPad LiDAR 256x192 in, Faro laser GT 1920x1440
+defaults:
+  - dataset: arkitscenes
+  - model: wave
+  - degradation: none
+
+seed: 0
+device: auto
+model:
+  checkpoint: checkpoints/wave/NYU8x.pth
+  scale: 8
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.05
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "real LiDAR input, laser GT; zero-shot; ratio 7.5 vs x8 weights"

@@ -1,0 +1,24 @@
+# WAVE x8 on real stairs, bicubic x8 from GT. Zero-shot (HyperSim weights).
+# rgbd_stair: 154 real stair frames, GT is the 8-bit-quantised sensor (~18 mm step) -> optimistic
+defaults:
+  - dataset: rgbd_stair
+  - model: wave
+  - degradation: bicubic_x8
+
+seed: 0
+device: auto
+model:
+  checkpoint: checkpoints/wave/NYU8x.pth
+  scale: 8
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.2
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "bicubic x8 from sensor GT; zero-shot"

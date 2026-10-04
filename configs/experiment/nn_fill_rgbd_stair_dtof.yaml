@@ -1,0 +1,21 @@
+# Floor for depthor_rgbd_stair: nearest zone, no RGB. Derived from the GT, so strong on delta.
+# rgbd_stair: 154 real stair frames, GT is the 8-bit-quantised sensor (~18 mm step) -> optimistic
+defaults:
+  - dataset: rgbd_stair
+  - model: nn_fill
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.2
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "floor for the dToF protocol; GT-derived input"

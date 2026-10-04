@@ -24,6 +24,11 @@ Two folders on the shared drive, one family of files:
    which makes the step useless; ``max_range_mm`` drops them.  The camera is
    the GT, as on MinJiang, so numbers are optimistic.
 
+   Checked 2026-10-04 against ``test/plys`` on frames 0/1/10/50/100: the
+   decoded depth's low quantiles match the point cloud's |z| to 1-3 cm, the
+   inverted map (255 - v) does not.  The clouds are truncated at ~3 m (Open3D's
+   default ``depth_trunc``), which is why their upper quantiles run lower.
+
    ``stairnet_rel`` has no range anywhere: depth is uint8/255, a normalised
    scale, exactly like Lu/Middlebury.  Its RMSE is not in metres -- use it for
    SiLog and for stair-edge error analysis via ``labels``, never in a metric

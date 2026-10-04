@@ -1,0 +1,21 @@
+# DAv2 backbone + 64 zone anchors, no task training. Ablation for DEPTHOR/DuCos backbone.
+# rgbd_stair: 154 real stair frames, GT is the 8-bit-quantised sensor (~18 mm step) -> optimistic
+defaults:
+  - dataset: rgbd_stair
+  - model: local_bilateral
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.2
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "RGB-aware floor; simulated dToF"

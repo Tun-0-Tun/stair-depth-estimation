@@ -1,0 +1,21 @@
+# Floor for the ARKitScenes rows: bicubic up from the real LiDAR grid.
+# ARKitScenes upsampling Validation: real iPad LiDAR 256x192 in, Faro laser GT 1920x1440
+defaults:
+  - dataset: arkitscenes
+  - model: bicubic
+  - degradation: none
+
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.05
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "floor; real LiDAR input"
