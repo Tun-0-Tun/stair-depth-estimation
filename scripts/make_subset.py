@@ -39,6 +39,14 @@ ignore ``split=`` (void_stairs, minjiang).  A split with no samples gets no file
 
 Before exiting, the script reopens the copy with the same loader, checks the
 ids, and loads one sample per split through ``validate_sample``.
+
+Growing a subset
+----------------
+``--add`` keeps every sample already in ``output_dir`` and adds ``-n`` new ones
+per split, picked from the samples not yet in it.  Index files, split files and
+the manifest are rewritten for the union; packed NYU files are rewritten whole.
+
+    uv run python scripts/make_subset.py --dataset lu --output_dir subdatasets/Lu -n 3 --add
 """
 
 from __future__ import annotations
@@ -79,12 +87,20 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="root of the new, small copy",
     )
-    p.add_argument("-n", type=int, default=5, help="samples per split (default: 5)")
-    p.add_argument("--seed", type=int, default=0, help="seed for picking samples (default: 0)")
     p.add_argument(
+        "-n", type=int, default=5, help="samples per split; with --add, how many more (default: 5)"
+    )
+    p.add_argument("--seed", type=int, default=0, help="seed for picking samples (default: 0)")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument(
         "--overwrite",
         action="store_true",
         help="replace output_dir if it holds an earlier subset (has manifest.json)",
+    )
+    mode.add_argument(
+        "--add",
+        action="store_true",
+        help="keep the samples already in output_dir and add -n new ones per split",
     )
     args = p.parse_args(argv)
     if args.n < 1:
@@ -338,10 +354,17 @@ def verify_and_write_splits(
     return ids
 
 
-def prepare_output(out: Path, src_root: Path, overwrite: bool) -> None:
+def prepare_output(out: Path, src_root: Path, overwrite: bool, add: bool = False) -> None:
     out_r, src_r = out.resolve(), src_root.resolve()
     if out_r == src_r or src_r in out_r.parents or out_r in src_r.parents:
-        raise SystemExit(f"output_dir {out} overlaps the source dataset {src_root}")
+        raise SystemExit(
+            f"output_dir {out} overlaps the source dataset {src_root}. "
+            "Is STAIR_DATA_ROOT pointing at your subsets instead of the full data?"
+        )
+    if add:
+        if not (out / MANIFEST).exists():
+            raise SystemExit(f"--add needs an earlier subset in {out}, but it has no {MANIFEST}")
+        return
     if out.exists() and any(out.iterdir()):
         if not overwrite:
             raise SystemExit(f"{out} is not empty; pass --overwrite to replace an earlier subset")
@@ -354,23 +377,74 @@ def prepare_output(out: Path, src_root: Path, overwrite: bool) -> None:
     out.mkdir(parents=True, exist_ok=True)
 
 
+def load_previous(
+    out: Path, key: str, src_root: Path, packed: bool
+) -> tuple[dict[str, set[str]], list[int]]:
+    """Source ids per split and seeds of the subset already in ``out`` (for --add)."""
+    old = json.loads((out / MANIFEST).read_text(encoding="utf-8"))
+    if old.get("dataset") != key:
+        raise SystemExit(f"{out} holds a {old.get('dataset')!r} subset, not {key!r}")
+    if Path(old["source_root"]).resolve() != src_root.resolve():
+        raise SystemExit(
+            f"{out} was cut from {old['source_root']}, but the config now resolves to "
+            f"{src_root}. Point STAIR_DATA_ROOT at the same full dataset as before."
+        )
+    if "source_ids" not in old:
+        # subsets made before source_ids existed: same as ids, except for the
+        # packed NYU files, whose ids were renumbered and cannot be traced back
+        if packed:
+            raise SystemExit(
+                f"{out} predates source_ids in {MANIFEST}, so its NYU samples cannot be "
+                "matched to the source. Rebuild it with --overwrite."
+            )
+        old["source_ids"] = old["ids"]
+    seeds = old.get("seeds", [old["seed"]] if "seed" in old else [])
+    return {s: set(old["source_ids"].get(s, [])) for s in SPLITS}, seeds
+
+
 def make_subset(
-    cfg: Mapping[str, Any], out: Path, n: int = 5, seed: int = 0, overwrite: bool = False
+    cfg: Mapping[str, Any],
+    out: Path,
+    n: int = 5,
+    seed: int = 0,
+    overwrite: bool = False,
+    add: bool = False,
 ) -> dict[str, Any]:
     key = loader_key(cfg)
     src_ds, records, split_source = split_records(cfg)
-    prepare_output(out, src_ds.root, overwrite)
+    prepare_output(out, src_ds.root, overwrite, add)
+    rid = src_ds.record_id
+
+    have: dict[str, set[str]] = {s: set() for s in SPLITS}
+    seeds: list[int] = []
+    if add:
+        have, seeds = load_previous(out, key, src_ds.root, is_packed(cfg))
+        for s in SPLITS:
+            lost = have[s] - {rid(r) for r in records[s]}
+            if lost:
+                raise SystemExit(
+                    f"{s} ids of the subset are gone from the source: {sorted(lost)[:3]}"
+                )
 
     rng = np.random.default_rng(seed)
-    chosen = {s: pick(records[s], n, rng, s) for s in SPLITS}
-    if not any(chosen.values()):
+    chosen, new = {}, []
+    for s in SPLITS:
+        rest = [r for r in records[s] if rid(r) not in have[s]]
+        if add and records[s] and not rest:
+            print(f"note: {s} already holds every sample of the source", file=sys.stderr)
+        picked = pick(rest, n, rng, s)
+        new += picked
+        keep = have[s] | {rid(r) for r in picked}
+        chosen[s] = [r for r in records[s] if rid(r) in keep]  # source order
+    if not new:
         raise SystemExit(f"{key}: nothing to copy")
 
     if is_packed(cfg):
+        # one file holds all samples, so write it again with old + new
         write_packed_nyu(src_ds, chosen["test"] + chosen["train"], out)
         n_files = 1
     else:
-        n_files = copy_files(src_ds, chosen["train"] + chosen["test"], out, key)
+        n_files = copy_files(src_ds, new, out, key)
     if key == "zju_l5":
         write_zju_index(src_ds, chosen, out)
     if key == "void_stairs":
@@ -380,11 +454,13 @@ def make_subset(
     manifest = {
         "dataset": key,
         "source_root": str(src_ds.root),
-        "n_per_split": n,
-        "seed": seed,
+        "seeds": [*seeds, seed],
         "split_source": split_source,
         "counts": {s: len(ids.get(s, [])) for s in SPLITS},
         "ids": ids,
+        # id in the source dataset, position for position; differs from ids only
+        # for packed NYU files, where ids are positions in the smaller file
+        "source_ids": {s: [rid(r) for r in chosen[s]] for s in SPLITS if chosen[s]},
     }
     (out / MANIFEST).write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     manifest["n_files"] = n_files
@@ -396,9 +472,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     from utils.config import load_config
 
     cfg = dict(load_config("dataset", args.dataset))
-    m = make_subset(cfg, args.output_dir, args.n, args.seed, args.overwrite)
+    m = make_subset(cfg, args.output_dir, args.n, args.seed, args.overwrite, args.add)
 
-    print(f"wrote {args.dataset} subset to {args.output_dir}  ({m['n_files']} files copied)")
+    verb = "added to" if args.add else "wrote"
+    print(f"{verb} {args.dataset} subset in {args.output_dir}  ({m['n_files']} files copied)")
     print(f"  split: {m['split_source']}")
     for s in SPLITS:
         print(f"  {s:5s}: {m['counts'][s]} samples")
