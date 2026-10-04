@@ -16,11 +16,12 @@ import numpy as np
 
 __all__ = [
     "DATA_ROOT_ENV",
-    "data_root",
     "REPO_ROOT",
+    "data_root",
     "downsample_depth",
     "resize_depth",
     "resize_rgb",
+    "resize_sparse",
     "resolve_device",
     "set_seed",
     "sparse_to_dense_nn",
@@ -119,6 +120,24 @@ def resize_depth(depth: np.ndarray, size: tuple[int, int], mode: str = "nearest"
     if depth.shape[:2] == tuple(size):
         return depth
     return _torch_interp(depth.astype(np.float32), tuple(size), mode)
+
+
+def resize_sparse(depth: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """Resize a sparse map by moving each measurement, never by sampling.
+
+    ``resize_depth(..., "nearest")`` samples a grid: shrinking 3x keeps one
+    pixel in nine, so a one-pixel dToF zone survives only if its centre happens
+    to sit on that grid (HAMMER's 1224x1024 does not), and enlarging turns each
+    point into a blob. Here every non-zero pixel lands at
+    its scaled coordinate; two points only merge if they fall on one pixel.
+    """
+    if depth.shape[:2] == tuple(size):
+        return depth
+    h, w = depth.shape[:2]
+    ys, xs = np.nonzero(depth)
+    out = np.zeros(size, dtype=np.float32)
+    out[ys * size[0] // h, xs * size[1] // w] = depth[ys, xs]
+    return out
 
 
 def downsample_depth(depth: np.ndarray, scale: int, mode: str = "bicubic") -> np.ndarray:

@@ -425,3 +425,39 @@ def test_arkitscenes_pairs_lr_and_gt_in_metres(tmp_path):
     assert s["lr_depth"].shape == (2, 2) and s["lr_depth"].max() == pytest.approx(1.5)
     assert s["gt_depth"].max() == pytest.approx(1.5) and s["meta"]["lr_scale"] == 8
     validate_sample(s, "arkitscenes")
+
+
+def test_resize_sparse_keeps_every_zone_point():
+    """Nearest sampling keeps a point only if it sits on the sampled grid; on a 3x
+    shrink that is 1 pixel in 9, so off-grid zones vanish and DEPTHOR silently
+    runs on fewer points."""
+    from utils.misc import resize_depth, resize_sparse
+
+    big = np.zeros((1440, 1920), np.float32)
+    # zone centres, one pixel off the 3x grid
+    big[91::180, 121::240] = np.arange(1, 65, dtype=np.float32).reshape(8, 8)
+    small = resize_sparse(big, (480, 640))
+    assert (small > 0).sum() == 64 and sorted(small[small > 0]) == list(range(1, 65))
+    assert (resize_depth(big, (480, 640), "nearest") > 0).sum() < 64, "the trap this avoids"
+
+
+def test_simulate_from_sensor_replaces_the_native_input(tmp_path):
+    """DEPTHOR on ARKitScenes: 64 zones from the real LiDAR, GT stays the laser."""
+    Image = pytest.importorskip("PIL.Image")
+
+    vid = tmp_path / "data" / "upsampling" / "Validation" / "1"
+    for d in ("wide", "lowres_depth", "highres_depth"):
+        (vid / d).mkdir(parents=True)
+    Image.fromarray(np.zeros((96, 128, 3), np.uint8)).save(vid / "wide" / "1_1.png")
+    Image.fromarray(np.full((12, 16), 1500, np.uint16)).save(vid / "lowres_depth" / "1_1.png")
+    Image.fromarray(np.full((96, 128), 3000, np.uint16)).save(vid / "highres_depth" / "1_1.png")
+
+    deg = build_degradation(dict(load_config("degradation", "dtof_l5_center")))
+    s = build_dataset(
+        {"loader": "arkitscenes", "root": str(tmp_path), "simulate_from": "sensor"}, degradation=deg
+    )[0]
+    pts = s["sparse_depth"][s["sparse_mask"]]
+    assert 0 < pts.size <= 64, "one pixel per zone, not the dense LiDAR map"
+    assert np.allclose(pts, 1.5, atol=0.2), "zones come from the sensor (1.5 m), not the GT (3 m)"
+    assert s["gt_depth"].max() == pytest.approx(3.0) and s["meta"]["simulated_from"] == "sensor"
+    validate_sample(s, "arkitscenes simulate_from")

@@ -45,6 +45,11 @@ Derivation rules (applied in ``__getitem__``, never in an adapter)
   completion method's result on such a dataset is reported as such.
 * GT only -> a ``degradation`` object must be supplied; it produces both, seeded
   per sample so two machines get byte-identical inputs.
+* ``simulate_from="gt"|"sensor"`` -> the native input is *replaced*: the
+  degradation runs on the GT or on the real sensor depth (sparse map, or the LR
+  map upsampled). For a method whose input format no real sensor here has --
+  DEPTHOR's 8x8 dToF on HAMMER/ARKitScenes/VOID. ``meta["simulated_from"]``
+  records it.
 """
 
 from __future__ import annotations
@@ -64,6 +69,7 @@ from utils.misc import (
     data_root,
     resize_depth,
     resize_rgb,
+    resize_sparse,
     sparse_to_dense_nn,
 )
 
@@ -173,8 +179,14 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         lr_scale: int = 4,
         seed: int = 0,
         strict: bool = True,
+        simulate_from: str | None = None,
         **kwargs: Any,
     ) -> None:
+        if simulate_from not in (None, "gt", "sensor"):
+            raise ValueError(f"simulate_from must be null, 'gt' or 'sensor', got {simulate_from!r}")
+        if simulate_from and degradation is None:
+            raise ValueError(f"simulate_from={simulate_from!r} needs a degradation model")
+        self.simulate_from = simulate_from
         # A relative root is resolved against the shared external dataset folder
         # (STAIR_DATA_ROOT), so configs stay portable between machines.
         self.root = Path(root).expanduser()
@@ -250,7 +262,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             rgb = resize_rgb(rgb, self.target_size)
             gt = resize_depth(gt, self.target_size, mode="nearest")
             if sparse is not None:
-                sparse = resize_depth(np.asarray(sparse, np.float32), self.target_size, "nearest")
+                sparse = resize_sparse(np.asarray(sparse, np.float32), self.target_size)
             lr = None if lr is None else lr  # regenerated below at the new scale
 
         if rgb.shape[:2] != gt.shape[:2]:
@@ -263,13 +275,24 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         modality = self.info.modality
 
         # ---- produce the input(s) --------------------------------------
+        deg_src = gt
+        if self.simulate_from == "sensor":
+            if sparse is not None:
+                deg_src = np.asarray(sparse, dtype=np.float32)
+            elif lr is not None:
+                deg_src = resize_depth(np.asarray(lr, np.float32), (h, w), mode="nearest")
+            else:
+                raise ValueError(f"[{self.info.name}] simulate_from='sensor' but no sensor input")
+        if self.simulate_from:
+            sparse, lr = None, None  # replace the native input with a simulated one
+
         if sparse is None and lr is None:
             if self.degradation is None:
                 raise RuntimeError(
                     f"[{self.info.name}] sample {idx} has no degraded input and no degradation "
                     "model was configured."
                 )
-            deg = self.degradation(gt, seed=self.seed * 1_000_003 + idx)
+            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx)
             sparse = deg["sparse_depth"]
             lr = deg.get("lr_depth")
             modality = "synthetic"
@@ -321,6 +344,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             "max_depth": self.max_depth,
             "rgb_path": str(raw.get("rgb_path", "")),
             "depth_path": str(raw.get("depth_path", "")),
+            "simulated_from": self.simulate_from,
         }
         meta.update(raw.get("meta", {}) or {})
 

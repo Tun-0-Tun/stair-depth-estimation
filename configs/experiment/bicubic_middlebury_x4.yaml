@@ -1,0 +1,20 @@
+# Floor for ducos_middlebury_x4: bicubic x4 on the same input. Depth is NOT metres.
+defaults:
+  - dataset: middlebury
+  - model: bicubic
+  - degradation: bicubic_x4
+
+seed: 0
+device: auto
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.0
+  max_depth: 1.01
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "normalised depth, NOT metres; rmse x 255 = upstream RMSE"

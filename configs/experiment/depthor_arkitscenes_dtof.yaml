@@ -1,0 +1,24 @@
+# DEPTHOR v1, zero-shot from ZJU-L5, on 8x8 dToF (dtof_l5_center, one pixel per zone).
+# ARKitScenes: the 64 zones are built from the real iPad LiDAR depth, scored against the
+# Faro LASER GT -> an honest number. Not stairs. Frames are 1920x1440: try --limit first.
+defaults:
+  - dataset: arkitscenes
+  - model: depthor
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+dataset:
+  simulate_from: sensor
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.05
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "simulated dToF from real LiDAR depth; independent laser GT"

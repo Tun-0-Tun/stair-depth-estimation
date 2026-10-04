@@ -1,0 +1,25 @@
+# DuCos x4 on middlebury (30 pairs): reproduction check against the DuCos paper.
+# Upstream reports RMSE on the 0-255 scale (metric_func.py::midd_calc_rmse), so
+# compare OUR rmse x 255 with their table. Depth is NOT metres.
+defaults:
+  - dataset: middlebury
+  - model: ducos
+  - degradation: bicubic_x4
+
+seed: 0
+device: auto
+model:
+  checkpoint: checkpoints/ducos/x4.pth.tar
+  scale: 4
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.0
+  max_depth: 1.01
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "normalised depth, NOT metres; rmse x 255 = upstream RMSE"

@@ -44,7 +44,7 @@ from typing import Any
 import numpy as np
 
 from baselines.base import Availability, BaselineModel, add_third_party_to_path, register_baseline
-from utils.misc import resize_depth, resize_rgb
+from utils.misc import resize_depth, resize_rgb, resize_sparse
 
 __all__ = ["DepthorAdapter", "DepthorPlusPlusAdapter"]
 
@@ -198,9 +198,9 @@ class DepthorAdapter(BaselineModel):
         th, tw = self.native_size
 
         rgb_r = resize_rgb(rgb, (th, tw))
-        # nearest, never bilinear: interpolating a sparse map smears zeros into
-        # the measurements and invents depth between them.
-        sparse_r = resize_depth(depth_in, (th, tw), mode="nearest")
+        # move the points, never interpolate or sample: bilinear smears zeros
+        # into the measurements, nearest drops most of 64 zones on a big frame.
+        sparse_r = resize_sparse(depth_in, (th, tw))
 
         image = torch.from_numpy(rgb_r.transpose(2, 0, 1))[None].to(self.device).float()
         sparse = torch.from_numpy(sparse_r)[None, None].to(self.device).float()

@@ -1,0 +1,24 @@
+# Floor: nearest zone, no RGB, on 8x8 dToF (dtof_l5_center, one pixel per zone).
+# VOID stairs: the 64 zones are built from VOID's dense GT, replacing the ~740 VIO points
+# DEPTHOR cannot use. Input derived from the GT it is scored on -> optimistic, like MinJiang.
+defaults:
+  - dataset: void_stairs
+  - model: nn_fill
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+dataset:
+  simulate_from: gt
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.2
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "simulated dToF from GT (not the VIO points); stairs; optimistic"

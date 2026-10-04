@@ -91,6 +91,7 @@ The keys worth knowing:
 | `model.checkpoint` | weights to load; `--check` verifies the path exists |
 | `dataset.root` | absolute path overrides `STAIR_DATA_ROOT`, for a one-off |
 | `dataset.split` | `train` / `val` / `test` |
+| `dataset.simulate_from` | `gt` / `sensor`: replace the dataset's own input with the degradation run on its GT or its real sensor depth — how DEPTHOR gets 8×8 dToF on VOID, HAMMER, ARKitScenes |
 | `eval.max_samples` | same as `--limit` |
 | `eval.min_depth` / `eval.max_depth` | metric range in metres; defaults to the dataset's |
 | `eval.crop` | `none` / `eigen` / `border6` — see [metrics_protocol.md](metrics_protocol.md#crops) |

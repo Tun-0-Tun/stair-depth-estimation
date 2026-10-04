@@ -1,0 +1,24 @@
+# DAv2 backbone + zone anchors, no task training, on 8x8 dToF (dtof_l5_center, one pixel per zone).
+# HAMMER: the 64 zones are built from the real D435 depth, scored against the LASER GT.
+# Input carries real sensor error, GT is independent -> an honest number. Not stairs.
+defaults:
+  - dataset: hammer
+  - model: local_bilateral
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+dataset:
+  simulate_from: sensor
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.1
+  max_depth: 5.0
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "simulated dToF from real D435 depth; independent laser GT"
