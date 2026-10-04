@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Plot what a degradation does to ground-truth depth, sample by sample.
 
-One row per sample: GT | degraded input | error (degraded - GT) | [model prediction].
+One row per sample: RGB | GT | degraded input | error (degraded - GT).
 
     uv run --group notebooks python scripts/visualize_degradation.py \
         --dataset synthetic_stairs --degradation projector_shadow -n 5
 
 ``--degradation`` names a preset in ``configs/degradation/``.  Datasets that ship
 a real sensor input (void_stairs, zju_l5, hammer, ...) ignore it and show their
-native input.  matplotlib lives in the ``notebooks`` dependency group.
+native input, unless ``--force-degradation`` is given: then the native input is
+discarded and the degradation is applied to their GT, as for GT-only datasets.
+matplotlib lives in the ``notebooks`` dependency group.
 
 The error panel is a per-pixel picture only.  Aggregate numbers (RMSE, AbsRel,
 ...) come from ``metrics/depth_metrics.py`` and nowhere else.
@@ -38,10 +40,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="degradation preset in configs/degradation/ (needed for GT-only datasets)",
     )
-    p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
     p.add_argument(
-        "--model", default=None, help="model whose prediction to add (NOT IMPLEMENTED YET)"
+        "--force-degradation",
+        action="store_true",
+        help="apply --degradation to GT even if the dataset ships a real sensor input",
     )
+    p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
     p.add_argument(
         "--input",
         choices=("sparse", "lr"),
@@ -53,7 +57,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def load_samples(dataset: str, degradation: str | None, n: int) -> tuple[list[dict], bool]:
+def load_samples(
+    dataset: str, degradation: str | None, n: int, force: bool = False
+) -> tuple[list[dict], bool]:
     """Return the first ``n`` samples and whether their input is uncalibrated."""
     from data.degradation import build_degradation
     from data.loaders import build_dataset
@@ -62,10 +68,15 @@ def load_samples(dataset: str, degradation: str | None, n: int) -> tuple[list[di
     deg = None
     if degradation is not None:
         deg = build_degradation(dict(load_config("degradation", degradation)))
-    ds = build_dataset(dict(load_config("dataset", dataset)), degradation=deg, max_samples=n)
+    ds = build_dataset(
+        dict(load_config("dataset", dataset)),
+        degradation=deg,
+        max_samples=n,
+        force_degradation=force,
+    )
 
     uncalibrated = False
-    if deg is not None and ds.info.modality != "gt_only":
+    if deg is not None and ds.info.modality != "gt_only" and not force:
         print(
             f"note: {dataset} ships a real sensor input; --degradation {degradation} is ignored",
             file=sys.stderr,
@@ -75,11 +86,6 @@ def load_samples(dataset: str, degradation: str | None, n: int) -> tuple[list[di
         probe = deg(np.ones((4, 4), dtype=np.float32), seed=0)["meta"]
         uncalibrated = probe.get("calibrated") is False
     return [ds[i] for i in range(len(ds))], uncalibrated
-
-
-def predict(model: str, sample: dict[str, Any]) -> np.ndarray:
-    """Dense (H, W) prediction in metres.  Hook for later -- not implemented yet."""
-    raise NotImplementedError(f"--model {model}: model prediction is not implemented yet")
 
 
 def degraded_input(sample: dict[str, Any], which: str) -> tuple[np.ndarray, np.ndarray]:
@@ -100,7 +106,7 @@ def plot(samples: list[dict], args: argparse.Namespace, uncalibrated: bool = Fal
         matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    n_cols = 4 if args.model else 3
+    n_cols = 4
     fig, axes = plt.subplots(
         len(samples), n_cols, figsize=(4.2 * n_cols, 3.4 * len(samples)), squeeze=False
     )
@@ -122,8 +128,12 @@ def plot(samples: list[dict], args: argparse.Namespace, uncalibrated: bool = Fal
         emax = max(emax, 1e-3)
 
         sid = s["meta"]["sample_id"]
+        # rgb is (H, W, 3) float32 in [0, 1] by the sample contract; no colorbar
+        row[0].imshow(np.clip(s["rgb"], 0.0, 1.0), interpolation="nearest")
+        row[0].set_title(f"RGB [{sid}]", fontsize=9)
+
         panels = [
-            (_holes_as_nan(gt), depth_cmap, (vmin, vmax), f"GT [{sid}]", "m"),
+            (_holes_as_nan(gt), depth_cmap, (vmin, vmax), "GT", "m"),
             (
                 _holes_as_nan(shown),
                 depth_cmap,
@@ -134,28 +144,10 @@ def plot(samples: list[dict], args: argparse.Namespace, uncalibrated: bool = Fal
             ),
             (err, err_cmap, (-emax, emax), "error: input - GT (grey = no pair)", "m"),
         ]
-        for ax, (img, cmap, (lo, hi), title, unit) in zip(row[:3], panels, strict=True):
+        for ax, (img, cmap, (lo, hi), title, unit) in zip(row[1:], panels, strict=True):
             im = ax.imshow(img, cmap=cmap, vmin=lo, vmax=hi, interpolation="nearest")
             fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02, label=unit)
             ax.set_title(title, fontsize=9)
-
-        if args.model:
-            ax = row[3]
-            try:
-                pred = predict(args.model, s)
-                im = ax.imshow(pred, cmap=depth_cmap, vmin=vmin, vmax=vmax)
-                fig.colorbar(im, ax=ax, fraction=0.046, pad=0.02, label="m")
-                ax.set_title(f"prediction: {args.model}", fontsize=9)
-            except NotImplementedError:
-                ax.text(
-                    0.5,
-                    0.5,
-                    "model prediction\nnot implemented yet",
-                    ha="center",
-                    va="center",
-                    transform=ax.transAxes,
-                )
-                ax.set_title(f"prediction: {args.model}", fontsize=9)
 
         for ax in row:
             ax.set_xticks([])
@@ -163,6 +155,7 @@ def plot(samples: list[dict], args: argparse.Namespace, uncalibrated: bool = Fal
 
     fig.suptitle(
         f"{args.dataset} / {args.degradation or 'native input'}"
+        + ("  (forced on GT)" if args.force_degradation else "")
         + ("  (uncalibrated)" if uncalibrated else ""),
         fontsize=11,
     )
@@ -174,17 +167,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     if args.n < 1:
         raise SystemExit("-n must be >= 1")
-    if args.model:
-        print(f"note: --model {args.model}: prediction is not implemented yet", file=sys.stderr)
+    if args.force_degradation and args.degradation is None:
+        raise SystemExit("error: --force-degradation needs --degradation <preset>")
 
     try:
-        samples, uncalibrated = load_samples(args.dataset, args.degradation, args.n)
+        samples, uncalibrated = load_samples(
+            args.dataset, args.degradation, args.n, force=args.force_degradation
+        )
     except (FileNotFoundError, RuntimeError, ValueError, KeyError) as e:
         # the loaders' messages already say what to fix (missing data, no --degradation)
         raise SystemExit(f"error: {e}") from None
     fig = plot(samples, args, uncalibrated)
 
-    out = args.out or DEFAULT_OUT_DIR / f"{args.dataset}_{args.degradation or 'native'}.png"
+    suffix = "_forced" if args.force_degradation else ""
+    out = args.out or DEFAULT_OUT_DIR / f"{args.dataset}_{args.degradation or 'native'}{suffix}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=110)
     print(f"saved {out}")

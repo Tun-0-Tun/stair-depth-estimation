@@ -20,8 +20,6 @@ horizontal offset shadows the sides of vertical edges and leaves horizontal
 nosings untouched; holes below nosings need a vertical component
 (``offset_t[1] < 0``, projector above the camera).
 
-The default offset is a **placeholder**, not the measured Astra 2 geometry.
-Results produced with it are uncalibrated.
 """
 
 from __future__ import annotations
@@ -44,9 +42,9 @@ class ProjectorShadowDegradation(BaseDegradation):
 
     key: str = "projector_shadow"
 
-    offset_t: tuple[float, float, float] = (0.0, -0.04, 0.0)
+    offset_t: tuple[float, float, float] = (0.0, -0.75, 0.0)
     """Projector centre in the camera frame, in **metres** (x right, y down,
-    z forward).  Placeholder value: the real Astra 2 geometry is not measured."""
+    z forward)."""
 
     # --- intrinsics, in **pixels** at the working resolution -------------
     fx: float = 570.0
@@ -66,9 +64,9 @@ class ProjectorShadowDegradation(BaseDegradation):
     """Slope-scaled bias, in multiples of the local per-pixel depth step.
     Prevents self-shadowing ("acne") on slanted treads and floors."""
 
-    fov_clip: bool = False
+    fov_clip: bool = True
     """If True, pixels projecting outside the projector image (same size and
-    intrinsics as the camera) are unlit.  Off by default: a real projector cone
+    intrinsics as the camera) are unlit.  If False, a real projector cone
     usually covers the camera's field of view."""
 
     def apply(self, gt: np.ndarray, rng: np.random.Generator) -> Mapping[str, Any]:

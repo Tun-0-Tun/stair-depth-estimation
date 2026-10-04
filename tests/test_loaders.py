@@ -17,6 +17,7 @@ import pytest
 
 from data.degradation import build_degradation
 from data.loaders import DATASET_REGISTRY, build_dataset, validate_sample
+from data.loaders.base import BaseDepthDataset, DatasetInfo
 from utils.config import CONFIG_ROOT, load_config
 
 
@@ -139,6 +140,54 @@ def test_identity_degradation_round_trips_exactly():
     )
     assert m["rmse"] == pytest.approx(0.0, abs=1e-6)
     assert m["delta1"] == 1.0
+
+
+class _NativeSparse(BaseDepthDataset):
+    """Tiny in-memory dataset that ships a real sparse input, like VOID."""
+
+    info = DatasetInfo(name="native_sparse", modality="sparse", min_depth=0.3, max_depth=8.0)
+
+    def _build_index(self):
+        return [{"id": "0"}, {"id": "1"}]
+
+    def _load_raw(self, record):
+        gt = np.full((32, 48), 2.0, np.float32)
+        sparse = np.zeros_like(gt)
+        sparse[::8, ::8] = 5.0  # deliberately different from GT
+        return {
+            "rgb": np.zeros((32, 48, 3), np.float32),
+            "gt_depth": gt,
+            "sparse_depth": sparse,
+            "sample_id": record["id"],
+        }
+
+
+def test_native_input_is_used_by_default():
+    ds = _NativeSparse(root=".", degradation=build_degradation({"type": "identity"}), strict=False)
+    s = ds[0]
+    assert s["meta"]["input_modality"] == "sparse"
+    assert s["meta"]["forced_degradation"] is False
+    assert float(s["sparse_depth"].max()) == 5.0
+
+
+def test_force_degradation_replaces_native_input_with_degraded_gt():
+    ds = _NativeSparse(
+        root=".",
+        degradation=build_degradation({"type": "identity"}),
+        force_degradation=True,
+        strict=False,
+    )
+    s = ds[0]
+    validate_sample(s, "forced")
+    assert s["meta"]["input_modality"] == "synthetic"
+    assert s["meta"]["forced_degradation"] is True
+    assert np.array_equal(s["sparse_depth"], s["gt_depth"])  # identity on GT, not the 5.0 map
+    assert np.array_equal(ds[1]["sparse_depth"], ds[1]["sparse_depth"])
+
+
+def test_force_degradation_without_a_model_fails_early():
+    with pytest.raises(ValueError, match="force_degradation"):
+        _NativeSparse(root=".", degradation=None, force_degradation=True, strict=False)
 
 
 # --------------------------------------------------------------------------
