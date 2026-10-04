@@ -1,0 +1,11 @@
+# StairNet 512x512 stair crops with depth maps + stair edge labels.
+# ⚠ NOT metres: uint8/255 with no stored range. SiLog / qualitative only.
+name: stairnet_rel
+loader: stairnet_rel
+root: Stair_dataset_with_depth_maps/data
+split: val               # train (2388) | val (608); test is an alias for val
+min_depth: 0.0
+max_depth: 1.01
+eval:
+  crop: none
+docs: docs/datasets.md#stairnet-stair-datasets

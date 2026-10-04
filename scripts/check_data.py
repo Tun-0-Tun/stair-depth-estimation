@@ -54,6 +54,12 @@ EXPECTED: dict[str, tuple[str, tuple[str, ...]]] = {
         "hypersim",
         ("metadata_camera_parameters.csv", "ai_001_001/images"),
     ),
+    "arkitscenes": ("ARKitScenes", ("data/upsampling/Validation",)),
+    "rgbd_stair": (
+        "RGB-D_stair_dataset/RGB-D stair dataset",
+        ("test/images", "test/depthes", "test/extrinsicses"),
+    ),
+    "stairnet_rel": ("Stair_dataset_with_depth_maps/data", ("val/images", "val/depthes", "val/labels")),
 }
 
 

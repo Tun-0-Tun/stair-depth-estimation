@@ -384,3 +384,44 @@ def test_zero_byte_file_raises_oserror_not_something_else(tmp_path):
     validate_sample(ds[0], "good frame still loads")
     with pytest.raises(OSError):
         ds[1]
+
+
+def test_rgbd_stair_decodes_per_frame_range_and_drops_wide_frames(tmp_path):
+    """8-bit depth is only metric through the extrinsics range; get it wrong and
+    every frame is off by a different factor, which no metric flags."""
+    Image = pytest.importorskip("PIL.Image")
+
+    base = tmp_path / "test"
+    for d in ("images", "depthes", "extrinsicses"):
+        (base / d).mkdir(parents=True)
+    v = np.array([[0, 255], [51, 102]], dtype=np.uint8)
+    for n, rng in ((0, "1000 3550"), (1, "0 65535")):  # frame 1: stray far pixel
+        Image.fromarray(np.zeros((2, 2, 3), np.uint8)).save(base / "images" / f"color_{n}.png")
+        Image.fromarray(v).save(base / "depthes" / f"Depth_{n}.png")
+        (base / "extrinsicses" / f"Extrinsics_{n}.txt").write_text(f"{rng} 0.4 -9.0 -2.8")
+
+    ds = build_dataset(
+        {"loader": "rgbd_stair", "root": str(tmp_path)},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 1}),
+    )
+    assert len(ds) == 1, "the 65 m-range frame must be dropped"
+    gt = ds[0]["gt_depth"]
+    assert gt[0, 0] == 0.0, "0 is no measurement, not dmin"
+    assert gt[0, 1] == pytest.approx(3.55) and gt[1, 0] == pytest.approx(1.51)
+    validate_sample(ds[0], "rgbd_stair")
+
+
+def test_arkitscenes_pairs_lr_and_gt_in_metres(tmp_path):
+    Image = pytest.importorskip("PIL.Image")
+
+    vid = tmp_path / "data" / "upsampling" / "Validation" / "123"
+    for d in ("wide", "lowres_depth", "highres_depth"):
+        (vid / d).mkdir(parents=True)
+    Image.fromarray(np.zeros((16, 16, 3), np.uint8)).save(vid / "wide" / "123_1.0.png")
+    Image.fromarray(np.full((2, 2), 1500, np.uint16)).save(vid / "lowres_depth" / "123_1.0.png")
+    Image.fromarray(np.full((16, 16), 1500, np.uint16)).save(vid / "highres_depth" / "123_1.0.png")
+
+    s = build_dataset({"loader": "arkitscenes", "root": str(tmp_path)})[0]
+    assert s["lr_depth"].shape == (2, 2) and s["lr_depth"].max() == pytest.approx(1.5)
+    assert s["gt_depth"].max() == pytest.approx(1.5) and s["meta"]["lr_scale"] == 8
+    validate_sample(s, "arkitscenes")

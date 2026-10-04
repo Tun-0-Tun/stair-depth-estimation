@@ -1,0 +1,13 @@
+# ARKitScenes depth-upsampling subset: real iPad LiDAR 256x192 in, Faro laser GT
+# at 1920x1440 out. Not stairs; the only real-sensor SR pair we have.
+# Native LR input -> no degradation needed (one would be ignored).
+name: arkitscenes
+loader: arkitscenes
+root: ARKitScenes
+split: test              # = Validation; the release has no separate test split
+frame_stride: 1
+min_depth: 0.05
+max_depth: 10.0
+eval:
+  crop: none
+docs: docs/datasets.md#arkitscenes

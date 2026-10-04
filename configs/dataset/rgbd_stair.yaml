@@ -1,0 +1,13 @@
+# StairNetV2 RGB-D stair dataset, test split: 154 real stair frames, 640x480.
+# Depth is uint8 normalised per frame; decoded to metres with the range from
+# extrinsicses/*.txt. GT is the sensor itself -> needs a degradation, optimistic.
+name: rgbd_stair
+loader: rgbd_stair
+root: "RGB-D_stair_dataset/RGB-D stair dataset"
+split: test
+max_range_mm: 10000      # drop frames whose 8-bit step would exceed ~39 mm
+min_depth: 0.2
+max_depth: 10.0
+eval:
+  crop: none
+docs: docs/datasets.md#stairnet-stair-datasets

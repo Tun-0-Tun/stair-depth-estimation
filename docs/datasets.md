@@ -26,7 +26,10 @@ $STAIR_DATA_ROOT/
 ├── HAMMER/              # HAMMER, multi-sensor         -> loader hammer
 ├── Middlebury/          # depth-SR test set, 30 pairs  -> loader middlebury
 ├── Lu/                  # depth-SR test set, 6 pairs   -> loader lu
-└── hypersim/            # synthetic indoor, dense GT   -> loader hypersim
+├── hypersim/            # synthetic indoor, dense GT   -> loader hypersim
+├── ARKitScenes/         # iPad LiDAR + laser GT        -> loader arkitscenes
+├── RGB-D_stair_dataset/ # StairNet, real stairs        -> loader rgbd_stair (test only)
+└── Stair_dataset_with_depth_maps/  # StairNet crops    -> loader stairnet_rel (NOT metric)
 ```
 
 Folder names are what `scripts/check_data.py` and the configs expect. Rename
@@ -45,6 +48,9 @@ all three of us, because a split file is a list of paths.
 | [Middlebury](#lu-and-middlebury) | depth-SR comparison | none (simulate) | varies | varies | **uint8 / 255 → normalised** | structured light |
 | [Lu](#lu-and-middlebury) | depth-SR comparison | none (simulate) | varies | varies | **uint8 / 255 → normalised** | ASUS Xtion Pro |
 | [Hypersim](#hypersim) | **synthetic pre-training** | none (simulate) | 1024×768 | 1024×768 | float m, **ray distance** | exact (rendered) |
+| [ARKitScenes](#arkitscenes) | **real-sensor SR benchmark** | real LiDAR 256×192 | 1920×1440 | 1920×1440 | uint16 mm | Faro laser |
+| [rgbd_stair](#stairnet-stair-datasets) | stair benchmark, 154 frames | none (simulate) | 640×480 | 640×480 | **uint8, per-frame range** → m | ⚠ the sensor itself |
+| [stairnet_rel](#stairnet-stair-datasets) | stair qualitative / SiLog | none (simulate) | 512×512 | 512×512 | **uint8 / 255 → normalised** | unknown, no range |
 | `synthetic_stairs` | CI only | generated | any | any | — | generated |
 
 "Input: none (simulate)" means the dataset ships only ground truth, so a
@@ -329,6 +335,34 @@ cannot be selected by label.
 
 Normals (`normal_cam`) are indexed when downloaded and their path is exposed as
 `meta["normal_path"]`, but they are not part of the sample contract.
+
+---
+
+## ARKitScenes
+
+`root: ARKitScenes` · loader `arkitscenes` · [github.com/apple/ARKitScenes](https://github.com/apple/ARKitScenes)
+
+Only the depth-upsampling subset is used: `data/upsampling/{Training,Validation}/<video>/{wide,lowres_depth,confidence,highres_depth}/<video>_<ts>.png`.
+`lowres_depth` (256×192, uint16 mm) is the input, `highres_depth` (1920×1440,
+uint16 mm, 0 = none) the laser GT. The ratio is 7.5, reported as `lr_scale=8`.
+No official test split: `split: test` reads `Validation`. Frames are large —
+use `frame_stride` or `--limit` for quick runs. `raw/` and `threedod/` are unused.
+
+## StairNet stair datasets
+
+Two folders, one family (StairNetV2/V3, Wang et al.). Details and the decoding
+rule are in [`data/loaders/stairnet.py`](../data/loaders/stairnet.py).
+
+* **`rgbd_stair`** — `RGB-D_stair_dataset/RGB-D stair dataset/test`, 154 frames
+  at 640×480. Depth is uint8 normalised **per frame**; `extrinsicses/Extrinsics_<n>.txt`
+  holds `dmin_mm dmax_mm gx gy gz`, so `d = dmin + v/255·(dmax−dmin)`. Step is
+  ~18 mm at the median frame; frames with range > `max_range_mm` (10 m, drops
+  15 of 154) are skipped. GT is the sensor → optimistic, like MinJiang.
+* **`stairnet_rel`** — `Stair_dataset_with_depth_maps/data/{train,val}`, 512×512,
+  uint8 depth with **no range stored**: normalised, not metres, like Lu. Stair
+  edge lines (`labels/*.txt`, `cls x1 y1 x2 y2`) come through as
+  `meta["stair_lines"]` for edge-wise error analysis. The `train`/`val` folders
+  of `RGB-D_stair_dataset` hold the same images (a subset, plus segmentations).
 
 ---
 
