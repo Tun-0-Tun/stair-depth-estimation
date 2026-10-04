@@ -1,0 +1,27 @@
+# Local affine calibration of a Depth Anything V2 prior. No trained parameters of
+# its own, but not a no-learning baseline either: the backbone is pretrained.
+# Structure comes from DAv2, absolute scale from the sparse input.
+#
+# DuCos uses the same DAv2 vits checkpoint and DEPTHOR the same family, so this
+# doubles as their ablation: backbone plus sparse anchors, without the trained
+# machinery on top.
+#
+# `checkpoint` is the Depth Anything V2 backbone, the same file DuCos and DEPTHOR
+# already need. Depth Anything itself is borrowed from third_party/ducos, which
+# vendors it, so this baseline has no submodule of its own.
+name: local_bilateral
+adapter: local_bilateral
+available: true
+paper: "ours (earlier calibration work); DAv2 backbone; SLIC: Achanta et al., 2012"
+checkpoint: checkpoints/depth_anything_v2_vits.pth
+n_segments: 200
+compactness: 10.0
+min_pixels: 10
+# none | gaussian | bilateral. The range term of `bilateral` is on (s, t), not on
+# RGB -- it smooths the calibration field, it does not cross-filter the image.
+smooth_mode: bilateral
+sigma_spatial: 6.0
+range_scale: 0.25
+bilateral_max_radius: 10
+sigma: 15.0              # only for smooth_mode: gaussian
+docs: docs/baselines.md

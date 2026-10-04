@@ -1,3 +1,13 @@
+# ⚠ MEASURED INVALID -- do not report these numbers as a method comparison.
+# VOID's input is ~740 real VIO points, 0.24% of the pixels. Densified onto the
+# H/8 grid (60x80 cells) only ~15% of cells carry a measurement; the rest is
+# nearest-neighbour fill. A super-resolution model is then asked to upsample
+# mostly-invented data, and on 10 frames WAVE, bicubic and nn_fill agreed to the
+# third decimal (absrel 0.163 / 0.153 / 0.151, delta1 0.800 / 0.808 / 0.809) --
+# every one of them was measuring the quality of the fill, not of the method.
+# VOID is a depth-*completion* benchmark; for a real SR protocol see
+# wave_minjiang_x8, where the same checkpoint beats bicubic by 27-46%.
+# Kept so the finding is reproducible. See docs/metrics_protocol.md.
 # WAVE x8 on VOID stairs, real sparse VIO input (no simulation).
 # VOID ships real sparse depth, so the scale is not a degradation (the loader
 # would ignore one): lr_scale densifies the real points onto the H/8 grid, and
@@ -26,4 +36,4 @@ runtime:
   iters: 50
 tracking:
   backend: none
-notes: "real VIO input densified to H/8; min/max from the input, not GT; zero-shot"
+notes: "INVALID PROTOCOL: SR on 0.24%-dense VIO input, H/8 grid is mostly nn-fill; ties with bicubic; zero-shot"

@@ -1,6 +1,6 @@
 """Degradation model of the Orbbec Astra 2 (active stereo).
 
-OWNER: Olesya.  This file is the deliverable "Astra 2 noise model" from the SOW.
+This file is the deliverable "Astra 2 noise model" from the SOW.
 
 What an active-stereo camera actually does to depth, and how each effect is
 modelled here:

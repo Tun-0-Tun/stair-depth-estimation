@@ -75,9 +75,9 @@ If we ever need sweeps or multirun, install `hydra-core` and delete that file.
 ## The Astra 2 noise model
 
 [`data/degradation/active_stereo_astra2.py`](../data/degradation/active_stereo_astra2.py)
-— **owner: Olesya.** This is the SOW deliverable "Astra 2 degradation model",
-and it is the highest-leverage file in the repo: DEPTHOR's central claim is that
-simulation realism, not architecture, determines real-world accuracy.
+— the SOW deliverable "Astra 2 degradation model", and the highest-leverage
+file in the repo: DEPTHOR's central claim is that simulation realism, not
+architecture, determines real-world accuracy.
 
 Modelled, in the physically correct domain rather than as depth-domain noise:
 
@@ -154,16 +154,6 @@ flag in `configs/model/ours.yaml`:
    without a target. Get a number from the robotics side before optimising —
    DuCos's ViT backbone will not hit 30 FPS on an embedded device, and if the
    requirement is 5 FPS that changes the architecture search.
-
-## Work split
-
-| Area | Owner |
-|---|---|
-| Astra 2 degradation model + calibration captures | Olesya |
-| Astra 2 stair capture + its loader (does not exist yet) | Olesya |
-| Remaining loaders (Hypersim, TartanAir, TOFDC, Mirror3D) | Maxim |
-| Baseline runs on the CUDA box, cross-check table | Maxim |
-| Metrics, harness, adapters, our method | tech lead |
 
 ## Decision log
 

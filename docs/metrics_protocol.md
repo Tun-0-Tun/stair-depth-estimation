@@ -137,6 +137,10 @@ machine with one measured on another.**
 
 ## Baseline availability
 
+What each baseline is, where it comes from and what it takes as input:
+[baselines.md](baselines.md). This section covers only whether it can be
+run here, and what to do when it cannot.
+
 ### DEPTHOR++ — code and weights are not public
 
 Status as of **2026-09-01**:
@@ -300,6 +304,79 @@ Write the result here **whether or not it matches**. If a number is outside
 ±10%, the entry must name the cause or say explicitly that the cause is
 unknown. "We could not reproduce it and do not know why" is a legitimate and
 useful finding; quietly dropping the row is not.
+
+## Comparing methods on a GT-only dataset
+
+Three things make MinJiang (and NYUv2, and Hypersim) easy to read wrongly. All
+three were measured on 890 MinJiang frames on 2026-09-27.
+
+### The floor is not neutral — it is the ground truth, filtered
+
+A GT-only dataset has no sensor input, so a degradation model derives one *from
+the same ground truth the metrics score against*. A no-learning baseline then
+inverts that derivation:
+
+* `nn_fill` on `dtof_l5_center` returns the GT quantised to 64 zones plus 1–3 cm
+  of noise;
+* `bicubic` on `bicubic_x8` returns the GT low-passed and resampled.
+
+Neither predicts depth. Both inherit the GT's absolute scale exactly, so their
+threshold metrics (δ1–δ3) measure *how well the sensor grid samples the scene*,
+never *how well depth is recovered*. A learned method has to reconstruct the
+structure **and** infer the scale from scratch, so "barely ahead of the floor on
+δ1" does not mean "barely better than trivial". Read RMSE, SqRel and SiLog on
+these datasets; treat δ against a derived floor as a sanity check only.
+
+### Rows from different degradations are not comparable
+
+The degradation decides how much information the method gets. On MinJiang:
+
+| protocol | values per frame |
+|---|---|
+| `dtof_l5_center` | 64 |
+| `bicubic_x8` | 4800 (a 60×80 grid) |
+
+That is a 75× difference, so a WAVE row and a DEPTHOR row on MinJiang answer
+different questions and must never be sorted into one ranking. Compare each
+method with the floor **of its own protocol**:
+
+| dToF protocol, 890 frames | DEPTHOR | `nn_fill` (floor) |
+|---|---|---|
+| absrel | **0.2111** | 0.2585 |
+| rmse | **0.7822** | 0.8437 |
+| sqrel | **0.5125** | 0.6365 |
+| silog | **23.70** | 27.99 |
+| rmse_log | 0.3770 | **0.3462** |
+| δ1 / δ2 / δ3 | 0.776 / 0.859 / 0.890 | **0.789 / 0.874 / 0.918** |
+| fps | 20.1 | 94.6 |
+
+| ×8 SR protocol, 890 frames | WAVE | `bicubic` (floor) |
+|---|---|---|
+| absrel | **0.0502** | 0.0937 |
+| rmse | **0.3318** | 0.4577 |
+| rmse_log | **0.1936** | 0.2742 |
+| sqrel | **0.0433** | 0.0812 |
+| silog | **19.16** | 26.16 |
+| δ1 / δ2 / δ3 | **0.939 / 0.965 / 0.979** | 0.858 / 0.918 / 0.953 |
+| fps | 4.35 | 652.8 |
+
+WAVE clears its floor on every metric. DEPTHOR splits: it wins everything that
+penalises the *magnitude* of the error and loses everything that counts the
+*fraction* of pixels inside a ratio.
+
+### A split like DEPTHOR's is the signature of a scale bias
+
+SiLog removes a global multiplier by construction; `rmse_log` does not. When one
+improves and the other degrades, suspect a systematic factor rather than noise.
+Measured directly on 5 MinJiang frames, DEPTHOR's `pred/gt` median runs
+0.87–0.99 — it under-predicts by roughly 7%, which is enough to push pixels over
+the δ1 threshold while barely moving SiLog. Worth re-measuring on the full split
+before drawing conclusions from it.
+
+The same test on VOID gives a *constant* 1.43–1.53 across every frame, including
+at pixels where the sparse input already holds the exact depth. Constant factor
+= a prior that has drifted; a factor that varies per frame (1.88–4.57, what
+`dtof_l5` produced) = the model has lost its anchor entirely.
 
 ## Known-good anchors
 

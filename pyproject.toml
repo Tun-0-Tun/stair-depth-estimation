@@ -43,11 +43,14 @@ dev = [
 #     git clone https://github.com/kakaxi314/BP-Net && cd BP-Net && python setup.py install
 baselines = [
     "timm>=0.9",               # Depth Anything V2 backbone
-    "opencv-python-headless",  # depth_anything_v2/dpt.py imports cv2 at module level
+    # 5.0.0.93 ships an empty wheel on macOS arm64 (dist-info, no cv2 package), so
+    # the baselines group silently has no cv2 there. 4.x wheels are fine everywhere.
+    "opencv-python-headless>=4.8,<5",  # depth_anything_v2/dpt.py imports cv2 at import time
     "h5py>=3.8",               # NYUv2 (.h5 pack) and ZJU-L5 loaders
     "huggingface-hub>=0.20",   # DuCos checkpoints
     "accelerate>=0.25",        # DEPTHOR training entry point
     "gdown>=6.2.0",            # DEPTHOR + WAVE weights live on Google Drive
+    "scikit-image>=0.22",      # SLIC superpixels for the local_bilateral floor
     "pytorch-wavelets",        # WAVE Components/WAVE.py imports DWTForward (pulls in PyWavelets)
     "setuptools<81",           # pytorch_wavelets imports pkg_resources, gone in setuptools 81
 #    "pytorch-msssim",          # WAVE Utilities/Evaluation.py imports ssim

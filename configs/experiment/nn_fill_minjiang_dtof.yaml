@@ -1,0 +1,28 @@
+# Floor for the dToF protocol on MinJiang: nearest-neighbour fill, no learning.
+#
+# ⚠ This floor is structurally strong, not neutral. MinJiang ships GT only, so
+# dtof_l5_center derives each zone value FROM the same GT the metrics score
+# against, adding 1-3 cm of noise. Filling those 64 values by nearest neighbour
+# therefore returns a piecewise-constant approximation of the GT itself, with
+# zero scale error by construction. Its delta metrics answer "how well do 64
+# zones describe the scene", not "how well is depth recovered", so a learned
+# method only barely ahead on delta is not necessarily doing badly.
+defaults:
+  - dataset: minjiang
+  - model: nn_fill
+  - degradation: dtof_l5_center
+
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.3
+  max_depth: 8.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "floor for the dToF protocol; GT-derived input, so optimistic by construction"

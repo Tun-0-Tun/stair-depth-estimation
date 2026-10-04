@@ -1,0 +1,26 @@
+# local_bilateral on ZJU-L5 -- the port check.
+#
+# The earlier calibration work measured this method on the same data with the
+# real l5_zones prior, 100 frames: absrel 0.1078, rmse 0.7044, delta1 0.8574.
+# This config reproduces that setup inside this repo, so a large disagreement
+# means the port is wrong, not that the method changed. For reference on the same
+# dataset: DEPTHOR 0.0759 / 0.3501 / 0.9321, nn_fill and bicubic Rel about 0.122.
+defaults:
+  - dataset: zju_l5
+  - model: local_bilateral
+  - degradation: none
+
+seed: 0
+device: auto
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+notes: "RGB-aware floor, no training; port check against the earlier work"

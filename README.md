@@ -117,8 +117,13 @@ what to do when it fails: **[docs/running.md](docs/running.md)**.
 |---|---|---|---|
 | DuCos (ICCV 2025) | ✅ submodule | ✅ HuggingFace | anything — **verified end to end** |
 | DEPTHOR v1 (ICCV 2025) | ✅ submodule | ✅ Google Drive (`gdown`) | anything — **paper numbers reproduced**, via `baselines/bpops_shim.py` |
+| WAVE (2026) | ✅ submodule | ✅ Google Drive (`gdown`) | CUDA — x8/x16/x32, one checkpoint each |
+| DORNet (CVPR 2025) | ❌ not vendored | — | nothing set up yet |
+| `local_bilateral` (ours, no task-specific training) | ✅ `baselines/local_bilateral.py` | ✅ DAv2 backbone only | anything — also the DuCos/DEPTHOR backbone ablation |
 | DEPTHOR++ | ❌ unreleased | ❌ unreleased | [details](docs/metrics_protocol.md#baseline-availability) |
 | `bicubic`, `nn_fill` | reference floors | — | anything |
+
+Inputs, outputs and papers: [docs/baselines.md](docs/baselines.md).
 
 DEPTHOR v1 reproduces its published ZJU-L5 table row to within 1.2% on the full
 527-frame split (RMSE 0.3501 vs 0.350, Rel 0.0759 vs 0.075, δ1 0.9321 vs 0.933)
@@ -150,6 +155,7 @@ by `baselines/bpops_shim.py` (checked against BP-Net's kernel). Runs are tagged
 
 * [docs/running.md](docs/running.md) — how to run a given model on given data, overrides, reading results
 * [docs/datasets.md](docs/datasets.md) — external data folder, per-dataset layout, sample contract, splits
+* [docs/baselines.md](docs/baselines.md) — what each baseline is, its paper, inputs and outputs
 * [docs/metrics_protocol.md](docs/metrics_protocol.md) — metric definitions, FPS protocol, baseline availability
 * [docs/design_doc.md](docs/design_doc.md) — the problem, architecture, Astra 2 noise model and its calibration
 * [CONTRIBUTING.md](CONTRIBUTING.md) — branches, PR template, review rules

@@ -227,3 +227,61 @@ def test_depthor_minjiang_experiment_uses_the_centre_footprint():
     cfg = load_experiment("depthor_minjiang")
     assert cfg["degradation"]["type"] == "dtof_sim"
     assert cfg["degradation"]["fill_ratio"] == 0.0, "must be the one-pixel-per-zone variant"
+
+
+# --------------------------------------------------------------------------
+# local_bilateral: the two pieces that fail silently if they are wrong
+# --------------------------------------------------------------------------
+
+
+def test_local_affine_fit_recovers_exact_coefficients_per_region():
+    """The per-superpixel fit is a one-pass bincount rewrite of a Python loop.
+
+    If it is wrong the output is still a plausible depth map, so pin it against
+    data built to have an exact answer: two regions, two different (s, t).
+    """
+    import numpy as np
+
+    from baselines.local_bilateral import _affine_per_label
+
+    h = w = 16
+    labels = np.zeros((h, w), dtype=np.int64)
+    labels[:, w // 2 :] = 1
+    rel = np.linspace(0.1, 2.0, h * w).reshape(h, w)
+
+    truth = {0: (3.0, 0.5), 1: (-1.5, 4.0)}
+    depth = np.where(labels == 0, truth[0][0] * rel + truth[0][1], truth[1][0] * rel + truth[1][1])
+
+    valid = np.zeros((h, w), dtype=bool)
+    valid[::2, ::2] = True  # a sparse subset, as a real sensor would give
+
+    s, t = _affine_per_label(rel, depth, labels, valid, 2, min_pixels=4, fallback=(0.0, 0.0))
+    for k, (s_k, t_k) in truth.items():
+        assert s[k] == pytest.approx(s_k, rel=1e-6)
+        assert t[k] == pytest.approx(t_k, rel=1e-6)
+
+    # A region with too few points must take the global fallback, not a wild fit.
+    lonely = np.zeros((h, w), dtype=bool)
+    lonely[0, 0] = True
+    s2, t2 = _affine_per_label(rel, depth, labels, lonely, 2, min_pixels=4, fallback=(9.0, 8.0))
+    assert (s2 == 9.0).all() and (t2 == 8.0).all()
+
+
+def test_local_bilateral_smoothing_keeps_a_step_and_leaves_flat_fields_alone():
+    """Edge-preserving means a sharp change in (s, t) survives the smoother."""
+    import numpy as np
+
+    from baselines.local_bilateral import _smooth_bilateral
+
+    flat_s = np.full((32, 32), 2.0)
+    flat_t = np.full((32, 32), 0.5)
+    out_s, out_t = _smooth_bilateral(flat_s, flat_t, 6.0, 0.25, 10)
+    assert np.allclose(out_s, 2.0) and np.allclose(out_t, 0.5)
+
+    step_s = np.where(np.arange(32)[None, :] < 16, 1.0, 5.0) * np.ones((32, 1))
+    step_t = np.zeros((32, 32))
+    sm_s, _ = _smooth_bilateral(step_s, step_t, 6.0, 0.25, 10)
+    # Far from the seam the values are untouched; a plain Gaussian would bleed.
+    assert sm_s[16, 2] == pytest.approx(1.0, abs=1e-3)
+    assert sm_s[16, 29] == pytest.approx(5.0, abs=1e-3)
+    assert sm_s.min() >= 1.0 - 1e-6 and sm_s.max() <= 5.0 + 1e-6
