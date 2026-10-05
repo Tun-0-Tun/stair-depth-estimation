@@ -145,6 +145,9 @@ nyu_depth_v2/{test_images_v2.npy, test_depth.npy, test_minmax.npy}
   as a real sparse input, exactly as the h5 pack's `raw` is.
   ⚠ **No official train/test split in this file** — the loader returns all
   1449 samples, which is fine to benchmark on but must never be trained on.
+  `mat_range: [1000, 1449]` selects the DSR test split (last 449 frames, the
+  same ones as the `npy` pack); add `simulate_from: gt` so the SR input is the
+  bicubic GT rather than `rawDepths`.
 * `h5`: depth is float metres. The `raw` key, where present, is the *unfilled*
   Kinect depth — a genuine sparse sensor input, better than any simulation. The
   loader uses it automatically.

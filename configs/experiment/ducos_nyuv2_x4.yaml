@@ -7,7 +7,12 @@ defaults:
 seed: 0
 device: auto
 dataset:
-  layout: npy
+  # The DSR npy pack is not on the server; these are the same 449 test frames
+  # from the official labeled .mat. simulate_from: gt -- the .mat also carries
+  # rawDepths (real Kinect), which would otherwise replace the bicubic input.
+  layout: mat
+  mat_range: [1000, 1449]
+  simulate_from: gt
 model:
   checkpoint: checkpoints/ducos/x4.pth.tar
   scale: 4

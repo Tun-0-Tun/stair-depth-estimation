@@ -461,3 +461,26 @@ def test_simulate_from_sensor_replaces_the_native_input(tmp_path):
     assert np.allclose(pts, 1.5, atol=0.2), "zones come from the sensor (1.5 m), not the GT (3 m)"
     assert s["gt_depth"].max() == pytest.approx(3.0) and s["meta"]["simulated_from"] == "sensor"
     validate_sample(s, "arkitscenes simulate_from")
+
+
+def test_nyuv2_mat_range_and_simulate_from_gt_give_the_dsr_protocol(tmp_path):
+    """DuCos/WAVE on NYU: last 449 frames, LR input bicubic from GT -- not from rawDepths."""
+    h5py = pytest.importorskip("h5py")
+
+    with h5py.File(tmp_path / "nyu_depth_v2_labeled.mat", "w") as f:
+        f["images"] = np.zeros((6, 3, 16, 8), np.uint8)  # MATLAB order: (N, 3, W, H)
+        f["depths"] = np.full((6, 16, 8), 2.0, np.float32)
+        f["rawDepths"] = np.full((6, 16, 8), 9.0, np.float32)
+
+    ds = build_dataset(
+        {
+            "loader": "nyuv2",
+            "root": str(tmp_path),
+            "layout": "mat",
+            "mat_range": [4, 6],
+            "simulate_from": "gt",
+        },
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert [r["id"] for r in ds.records] == ["nyu_0004", "nyu_0005"]
+    assert np.allclose(ds[0]["lr_depth"], 2.0), "input must come from the GT, not rawDepths"

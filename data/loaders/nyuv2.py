@@ -61,6 +61,7 @@ class NYUv2Dataset(BaseDepthDataset):
         layout: str = "h5",
         minmax_file: str | None = "test_minmax.npy",
         mat_file: str = "nyu_depth_v2_labeled.mat",
+        mat_range: Sequence[int] | None = None,
         **kwargs: Any,
     ) -> None:
         if layout not in ("h5", "npy", "mat"):
@@ -68,6 +69,9 @@ class NYUv2Dataset(BaseDepthDataset):
         self.layout = layout
         self.minmax_file = minmax_file
         self.mat_file = mat_file
+        # [1000, 1449] = the DSR test split (DKN / FDSR / DuCos / WAVE: first 1000
+        # train, last 449 test) -- the same frames as their test_*.npy pack.
+        self.mat_range = tuple(mat_range) if mat_range else None
         self._npy_cache: dict[str, np.ndarray] = {}
         self._mat_handle: Any = None
         super().__init__(root=root, split=split, **kwargs)
@@ -77,7 +81,8 @@ class NYUv2Dataset(BaseDepthDataset):
     def _build_index(self) -> Sequence[Any]:
         if self.layout == "mat":
             n = self._mat()["depths"].shape[0]
-            return [{"id": f"nyu_{i:04d}", "index": i} for i in range(n)]
+            lo, hi = self.mat_range or (0, n)
+            return [{"id": f"nyu_{i:04d}", "index": i} for i in range(lo, min(hi, n))]
 
         if self.layout == "h5":
             subdir = {"train": "train", "val": "val", "test": "val"}.get(self.split, self.split)
