@@ -25,8 +25,6 @@ git) and writes the full config, environment and per-sample metrics to
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import sys
 from collections.abc import Sequence
 from typing import Any
@@ -40,32 +38,12 @@ from metrics.depth_metrics import METRIC_NAMES, DepthMetricAccumulator, MetricCo
 from metrics.runtime_metrics import RuntimeConfig, measure_runtime
 from utils.config import CONFIG_ROOT, Config, _read_yaml, apply_overrides, load_experiment
 from utils.misc import set_seed
-from utils.results import RunRecorder, find_summary_row, get_tracker
+from utils.results import RunRecorder, config_hash, find_summary_row, get_tracker
 
 #: The benchmark.csv row of the last main() call -- run, or found in the cache.
 #: run_benchmark reads it instead of "the last line of the CSV", which another
 #: run on another GPU may have appended in the meantime.
 LAST_ROW: dict[str, Any] | None = None
-
-
-def config_hash(cfg: Config) -> str:
-    """What decides the numbers: data, input, method, weights, protocol, seed.
-
-    Not the device, runtime or notes, and not the experiment's name -- so the
-    same floor reached from two experiment files is computed once. Not the code
-    either: after a fix that changes results, rerun with --force.
-    """
-
-    def clean(x: Any) -> Any:
-        if isinstance(x, dict):
-            return {
-                k: clean(v) for k, v in x.items() if v is not None and k not in ("docs", "notes")
-            }
-        return x
-
-    d = cfg.to_dict()
-    blob = {k: clean(d.get(k)) for k in ("dataset", "degradation", "model", "eval", "seed")}
-    return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
 def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -139,7 +117,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     global LAST_ROW
     LAST_ROW = None
-    chash = config_hash(cfg)
+    chash = config_hash(cfg.to_dict())
     cached = None if (args.force or args.check) else find_summary_row(chash)
     if cached:
         print(
