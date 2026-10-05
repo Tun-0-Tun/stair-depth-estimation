@@ -145,6 +145,15 @@ uv run python scripts/run_benchmark.py --auto       # skip cells that cannot run
 
 Writes `experiments/results/<date>_<time>_<name>.{md,csv}` — dataset × method × metric.
 
+**A cell that is already in `benchmark.csv` is not recomputed.** Each row
+carries `config_hash` — dataset, degradation, model and weights, eval protocol,
+seed, `--limit`; not the device or the experiment's name. A repeated config is
+printed as `[cached]` and its old row goes into the new table, so rerunning a
+command after a failure only computes the cells that failed, and a floor shared
+by two experiment files runs once. The hash does not see the code: after a fix
+that changes results, add `--force`. Rows from before the column existed have no
+hash and run once more.
+
 **Unreadable frames do not abort a run.** An interrupted copy onto the shared
 data folder leaves zero-byte files — MinJiang currently has two of 909. Such a
 frame is skipped, named on stdout, and counted in the `n_unreadable` column of

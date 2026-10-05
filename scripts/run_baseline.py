@@ -25,6 +25,8 @@ git) and writes the full config, environment and per-sample metrics to
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 from collections.abc import Sequence
 from typing import Any
@@ -38,7 +40,32 @@ from metrics.depth_metrics import METRIC_NAMES, DepthMetricAccumulator, MetricCo
 from metrics.runtime_metrics import RuntimeConfig, measure_runtime
 from utils.config import CONFIG_ROOT, Config, _read_yaml, apply_overrides, load_experiment
 from utils.misc import set_seed
-from utils.results import RunRecorder, get_tracker
+from utils.results import RunRecorder, find_summary_row, get_tracker
+
+#: The benchmark.csv row of the last main() call -- run, or found in the cache.
+#: run_benchmark reads it instead of "the last line of the CSV", which another
+#: run on another GPU may have appended in the meantime.
+LAST_ROW: dict[str, Any] | None = None
+
+
+def config_hash(cfg: Config) -> str:
+    """What decides the numbers: data, input, method, weights, protocol, seed.
+
+    Not the device, runtime or notes, and not the experiment's name -- so the
+    same floor reached from two experiment files is computed once. Not the code
+    either: after a fix that changes results, rerun with --force.
+    """
+
+    def clean(x: Any) -> Any:
+        if isinstance(x, dict):
+            return {
+                k: clean(v) for k, v in x.items() if v is not None and k not in ("docs", "notes")
+            }
+        return x
+
+    d = cfg.to_dict()
+    blob = {k: clean(d.get(k)) for k in ("dataset", "degradation", "model", "eval", "seed")}
+    return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
 def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -54,6 +81,9 @@ def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--check", action="store_true", help="only report whether the model can run")
     p.add_argument("--no-runtime", action="store_true", help="skip the FPS measurement")
     p.add_argument("--notes", default="", help="free text stored in the results row")
+    p.add_argument(
+        "--force", action="store_true", help="rerun even if benchmark.csv has this exact config"
+    )
     args, rest = p.parse_known_args(argv)
     overrides = [a for a in rest if "=" in a and not a.startswith("-")]
     unknown = [a for a in rest if a not in overrides]
@@ -106,6 +136,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     model_cfg = dict(cfg.model)
     dataset_cfg = dict(cfg.dataset)
     experiment_name = cfg.get("experiment_name", "adhoc")
+
+    global LAST_ROW
+    LAST_ROW = None
+    chash = config_hash(cfg)
+    cached = None if (args.force or args.check) else find_summary_row(chash)
+    if cached:
+        print(
+            f"[cached] {experiment_name}: same config already in benchmark.csv "
+            f"(row {cached['timestamp']}, commit {cached['git_commit']}, "
+            f"{cached['n_samples']} samples). --force to rerun."
+        )
+        LAST_ROW = cached
+        return 0
 
     # ---- availability: fail early and explain, never mid-forward-pass -----
     key = model_cfg.get("adapter", model_cfg.get("name"))
@@ -223,10 +266,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "seed": cfg.get("seed", 0),
             "device": model.device,
             "metric_config": metric_cfg.to_json(),
+            "config_hash": chash,
         }
     )
     recorder.save_per_sample(acc.per_sample)
     row = recorder.finalize(summary, notes=args.notes or str(cfg.get("notes", "")))
+    LAST_ROW = row
 
     print("\n=== result ===")
     print(

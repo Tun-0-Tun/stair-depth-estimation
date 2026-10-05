@@ -65,6 +65,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--device", default=None)
     p.add_argument("--metrics", nargs="*", default=[*PRIMARY_METRICS, "fps"])
     p.add_argument("--dry-run", action="store_true", help="print the matrix and exit")
+    p.add_argument("--force", action="store_true", help="rerun cells already in benchmark.csv")
     p.add_argument(
         "--name", default=None, help="table file name suffix (default: methods__datasets)"
     )
@@ -79,6 +80,8 @@ def _cell_args(dataset: str, model: str, args: argparse.Namespace) -> list[str]:
         argv += ["--limit", str(args.limit)]
     if args.device:
         argv += ["--device", args.device]
+    if args.force:
+        argv += ["--force"]
     return argv
 
 
@@ -94,7 +97,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     exp,
                     exp,
                     ["--experiment", exp]
-                    + (["--limit", str(args.limit)] if args.limit is not None else []),
+                    + (["--limit", str(args.limit)] if args.limit is not None else [])
+                    + (["--force"] if args.force else []),
                 )
             )
     # experiment files and a dataset x model matrix can share one call
@@ -130,7 +134,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             failures.append((ds, mdl, reason))
             continue
 
-        row = _last_summary_row()
+        row = _numeric(run_baseline.LAST_ROW)
         if row:
             rows.append(row)
 
@@ -171,19 +175,11 @@ def _table_name(name: str | None, rows: list[dict[str, Any]], failures: list) ->
     return name[:120]  # ponytail: long lists get cut; pass --name for a readable one
 
 
-def _last_summary_row() -> dict[str, Any] | None:
-    """Read back the row ``run_baseline`` just appended to the shared CSV."""
-    import csv
-
-    from utils.results import SUMMARY_CSV
-
-    if not SUMMARY_CSV.exists():
+def _numeric(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The cell's row (fresh or cached) with metric columns as floats."""
+    if not row:
         return None
-    with SUMMARY_CSV.open(newline="", encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    if not rows:
-        return None
-    row = rows[-1]
+    row = dict(row)
     for k, v in list(row.items()):
         if k in METRIC_NAMES or k in ("fps", "latency_ms_median"):
             try:

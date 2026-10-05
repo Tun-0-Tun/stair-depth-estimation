@@ -46,7 +46,15 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     "latency_ms_median",
     "git_commit",
     "metric_config",
+    "config_hash",
     "notes",
+)
+
+#: Earlier headers of benchmark.csv, newest first, so migrate_summary_header can
+#: place a row of any past width. Add one here whenever SUMMARY_COLUMNS grows.
+_PAST_COLUMNS: tuple[tuple[str, ...], ...] = (
+    tuple(c for c in SUMMARY_COLUMNS if c != "config_hash"),
+    tuple(c for c in SUMMARY_COLUMNS if c not in ("config_hash", "n_unreadable")),
 )
 
 
@@ -142,8 +150,8 @@ def migrate_summary_header(path: Path | None = None) -> bool:
     When a column is added (``n_unreadable`` was), the file keeps its old header
     while new rows are written in the new order, so every reader -- including
     run_benchmark's table -- shifts those rows by one column without an error.
-    Rows are told apart by length: the current width is the new schema, the old
-    header's width is mapped by name. Returns True if the file was rewritten.
+    Rows are told apart by length against the current and past headers
+    (``_PAST_COLUMNS``). Returns True if the file was rewritten.
     """
     path = Path(path or SUMMARY_CSV)
     if not path.exists():
@@ -152,22 +160,28 @@ def migrate_summary_header(path: Path | None = None) -> bool:
         rows = list(csv.reader(fh))
     if not rows or rows[0] == list(SUMMARY_COLUMNS):
         return False
-    old = rows[0]
+    by_width = {len(c): c for c in (*_PAST_COLUMNS, SUMMARY_COLUMNS, rows[0])}
     out = []
     for r in rows[1:]:
-        if len(r) == len(SUMMARY_COLUMNS):
-            out.append(dict(zip(SUMMARY_COLUMNS, r, strict=True)))
-        elif len(r) == len(old):
-            out.append(dict(zip(old, r, strict=True)))
-        else:
-            raise ValueError(
-                f"{path}: a row has {len(r)} fields, neither the old nor the new width"
-            )
+        if len(r) not in by_width:
+            raise ValueError(f"{path}: a row has {len(r)} fields, matching no known header")
+        out.append(dict(zip(by_width[len(r)], r, strict=True)))
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(SUMMARY_COLUMNS), extrasaction="ignore")
         w.writeheader()
         w.writerows({c: r.get(c, "") for c in SUMMARY_COLUMNS} for r in out)
     return True
+
+
+def find_summary_row(config_hash: str, path: Path | None = None) -> dict[str, str] | None:
+    """The latest benchmark.csv row recorded for this exact config, if any."""
+    path = Path(path or SUMMARY_CSV)
+    if not config_hash or not path.exists():
+        return None
+    migrate_summary_header(path)
+    with path.open(newline="", encoding="utf-8") as fh:
+        hits = [r for r in csv.DictReader(fh) if r.get("config_hash") == config_hash]
+    return hits[-1] if hits else None
 
 
 def append_summary_row(row: Mapping[str, Any], path: Path | None = None) -> Path:

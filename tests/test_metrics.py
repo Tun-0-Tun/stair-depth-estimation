@@ -238,26 +238,26 @@ def test_group_override_does_not_discard_key_overrides():
 
 
 def test_benchmark_csv_with_an_old_header_is_migrated_not_shifted(tmp_path):
-    """A column added to SUMMARY_COLUMNS left the old header in place, and every
-    new row was read one column off: absrel showed n_unreadable, fps showed silog."""
+    """Columns added to SUMMARY_COLUMNS (n_unreadable, then config_hash) left the old
+    header in place, and every new row was read off by a column: absrel showed
+    n_unreadable, fps showed silog. Rows of every past width must land right."""
     import csv
 
-    from utils.results import SUMMARY_COLUMNS, append_summary_row
+    from utils.results import _PAST_COLUMNS, SUMMARY_COLUMNS, append_summary_row
 
-    old = [c for c in SUMMARY_COLUMNS if c != "n_unreadable"]
+    oldest, middle = _PAST_COLUMNS[-1], _PAST_COLUMNS[0]
     path = tmp_path / "benchmark.csv"
     with path.open("w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(old)
-        w.writerow(["0.5" if c == "absrel" else "old" for c in old])
+        w.writerow(oldest)
+        w.writerow(["0.5" if c == "absrel" else "x" for c in oldest])
         w.writerow(
-            [
-                "0.7" if c == "absrel" else "2" if c == "n_unreadable" else "mid"
-                for c in SUMMARY_COLUMNS
-            ]
+            ["0.7" if c == "absrel" else "2" if c == "n_unreadable" else "x" for c in middle]
         )
 
-    append_summary_row({"absrel": 0.9, "n_unreadable": 0}, path=path)
+    append_summary_row({"absrel": 0.9, "n_unreadable": 0, "config_hash": "abc"}, path=path)
     rows = list(csv.DictReader(path.open(newline="")))
+    assert list(rows[0]) == list(SUMMARY_COLUMNS)
     assert [r["absrel"] for r in rows] == ["0.5", "0.7", "0.9"]
     assert [r["n_unreadable"] for r in rows] == ["", "2", "0"]
+    assert [r["config_hash"] for r in rows] == ["", "", "abc"]
