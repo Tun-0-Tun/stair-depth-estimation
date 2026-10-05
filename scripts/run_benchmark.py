@@ -17,8 +17,11 @@ Usage
 Outputs
 -------
 ``experiments/results/benchmark.csv``   one appended row per (dataset, method)
-``experiments/results/table_<stamp>.md``  the dataset x method x metric table
-``experiments/results/table_<stamp>.csv`` the same, machine-readable
+``experiments/results/<date>_<time>_<name>.md``  the dataset x method x metric table
+``experiments/results/<date>_<time>_<name>.csv`` the same, machine-readable
+
+``<name>`` is ``--name`` if given, else the methods and datasets that ran, e.g.
+``2026-10-05_14-30_depthor-nn_fill__hammer-zju_l5.md``.
 
 A cell that could not be produced is **not** silently dropped: it appears with
 the reason (missing weights, missing data, unimplemented loader), because "we
@@ -29,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import re
 import time
 import traceback
 from collections.abc import Sequence
@@ -61,6 +65,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--device", default=None)
     p.add_argument("--metrics", nargs="*", default=[*PRIMARY_METRICS, "fps"])
     p.add_argument("--dry-run", action="store_true", help="print the matrix and exit")
+    p.add_argument(
+        "--name", default=None, help="table file name suffix (default: methods__datasets)"
+    )
     return p.parse_args(argv)
 
 
@@ -77,7 +84,7 @@ def _cell_args(dataset: str, model: str, args: argparse.Namespace) -> list[str]:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    stamp = time.strftime("%Y%m%d-%H%M%S")
+    stamp = time.strftime("%Y-%m-%d_%H-%M")
 
     jobs: list[tuple[str, str, list[str]]] = []
     if args.experiments:
@@ -90,7 +97,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                     + (["--limit", str(args.limit)] if args.limit is not None else []),
                 )
             )
-    else:
+    # experiment files and a dataset x model matrix can share one call
+    if args.datasets or args.models or not args.experiments:
         datasets = args.datasets or ["synthetic_stairs"]
         models = args.models or ["nn_fill", "bicubic"]
         for ds, mdl in itertools.product(datasets, models):
@@ -135,9 +143,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     for ds, mdl, reason in failures:
         table_rows.append({"dataset": ds, "method": mdl, "notes": f"NOT RUN: {reason}"})
 
-    md = RESULTS_DIR / f"table_{stamp}.md"
+    stem = f"{stamp}_{_table_name(args.name, rows, failures)}"
+    md = RESULTS_DIR / f"{stem}.md"
     write_markdown_table(table_rows, columns, md)
-    csv_path = RESULTS_DIR / f"table_{stamp}.csv"
+    csv_path = RESULTS_DIR / f"{stem}.csv"
     _write_csv(table_rows, columns, csv_path)
 
     print(f"\n{'=' * 70}")
@@ -146,6 +155,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     if failures:
         print(f"{len(failures)} cell(s) did not run - they are listed in the table as NOT RUN")
     return 0
+
+
+def _table_name(name: str | None, rows: list[dict[str, Any]], failures: list) -> str:
+    """``--name``, else ``<methods>__<datasets>`` of the cells that ran, file-name safe."""
+    if not name:
+
+        def uniq(xs):
+            return "-".join(dict.fromkeys(x for x in xs if x))
+
+        methods = uniq(r.get("method") for r in rows)
+        datasets = uniq(r.get("dataset") for r in rows)
+        name = f"{methods}__{datasets}" if rows else "not_run_" + uniq(f[0] for f in failures)
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "-", name)
+    return name[:120]  # ponytail: long lists get cut; pass --name for a readable one
 
 
 def _last_summary_row() -> dict[str, Any] | None:

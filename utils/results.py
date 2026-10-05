@@ -136,10 +136,45 @@ class RunRecorder:
         return row
 
 
+def migrate_summary_header(path: Path | None = None) -> bool:
+    """Rewrite ``benchmark.csv`` under the current ``SUMMARY_COLUMNS`` header.
+
+    When a column is added (``n_unreadable`` was), the file keeps its old header
+    while new rows are written in the new order, so every reader -- including
+    run_benchmark's table -- shifts those rows by one column without an error.
+    Rows are told apart by length: the current width is the new schema, the old
+    header's width is mapped by name. Returns True if the file was rewritten.
+    """
+    path = Path(path or SUMMARY_CSV)
+    if not path.exists():
+        return False
+    with path.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.reader(fh))
+    if not rows or rows[0] == list(SUMMARY_COLUMNS):
+        return False
+    old = rows[0]
+    out = []
+    for r in rows[1:]:
+        if len(r) == len(SUMMARY_COLUMNS):
+            out.append(dict(zip(SUMMARY_COLUMNS, r, strict=True)))
+        elif len(r) == len(old):
+            out.append(dict(zip(old, r, strict=True)))
+        else:
+            raise ValueError(
+                f"{path}: a row has {len(r)} fields, neither the old nor the new width"
+            )
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(SUMMARY_COLUMNS), extrasaction="ignore")
+        w.writeheader()
+        w.writerows({c: r.get(c, "") for c in SUMMARY_COLUMNS} for r in out)
+    return True
+
+
 def append_summary_row(row: Mapping[str, Any], path: Path | None = None) -> Path:
     """Append one row to the shared, git-tracked benchmark table."""
     path = Path(path or SUMMARY_CSV)
     path.parent.mkdir(parents=True, exist_ok=True)
+    migrate_summary_header(path)
     new = not path.exists()
     with path.open("a", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(SUMMARY_COLUMNS), extrasaction="ignore")

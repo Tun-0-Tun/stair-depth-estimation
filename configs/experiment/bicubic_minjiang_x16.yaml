@@ -1,0 +1,24 @@
+# Floor for the x16 SR protocol on MinJiang: bicubic up from the LR grid.
+#
+# ⚠ Same caveat as nn_fill_minjiang_dtof: bicubic_x16 low-passes the GT and hands
+# it back, so this floor is GT-through-a-filter, with no scale error and no
+# holes. Beating it is the minimum bar for an SR method, not a strong result.
+defaults:
+  - dataset: minjiang
+  - model: bicubic
+  - degradation: bicubic_x16
+
+seed: 0
+device: auto
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.3
+  max_depth: 8.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "floor for the x16 SR protocol; GT-derived input, so optimistic by construction"

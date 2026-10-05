@@ -235,3 +235,29 @@ def test_group_override_does_not_discard_key_overrides():
     assert cfg.dataset["root"] == "/tmp/elsewhere"
     assert cfg.dataset["max_samples"] == 7
     assert cfg.dataset["loader"] == "void_stairs"
+
+
+def test_benchmark_csv_with_an_old_header_is_migrated_not_shifted(tmp_path):
+    """A column added to SUMMARY_COLUMNS left the old header in place, and every
+    new row was read one column off: absrel showed n_unreadable, fps showed silog."""
+    import csv
+
+    from utils.results import SUMMARY_COLUMNS, append_summary_row
+
+    old = [c for c in SUMMARY_COLUMNS if c != "n_unreadable"]
+    path = tmp_path / "benchmark.csv"
+    with path.open("w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(old)
+        w.writerow(["0.5" if c == "absrel" else "old" for c in old])
+        w.writerow(
+            [
+                "0.7" if c == "absrel" else "2" if c == "n_unreadable" else "mid"
+                for c in SUMMARY_COLUMNS
+            ]
+        )
+
+    append_summary_row({"absrel": 0.9, "n_unreadable": 0}, path=path)
+    rows = list(csv.DictReader(path.open(newline="")))
+    assert [r["absrel"] for r in rows] == ["0.5", "0.7", "0.9"]
+    assert [r["n_unreadable"] for r in rows] == ["", "2", "0"]

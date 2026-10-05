@@ -143,7 +143,7 @@ uv run python scripts/run_benchmark.py --dry-run    # print the matrix, run noth
 uv run python scripts/run_benchmark.py --auto       # skip cells that cannot run here
 ```
 
-Writes `experiments/results/table_<stamp>.{md,csv}` — dataset × method × metric.
+Writes `experiments/results/<date>_<time>_<name>.{md,csv}` — dataset × method × metric.
 
 **Unreadable frames do not abort a run.** An interrupted copy onto the shared
 data folder leaves zero-byte files — MinJiang currently has two of 909. Such a
