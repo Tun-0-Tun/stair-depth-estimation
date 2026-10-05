@@ -50,6 +50,8 @@ Derivation rules (applied in ``__getitem__``, never in an adapter)
   map upsampled). For a method whose input format no real sensor here has --
   DEPTHOR's 8x8 dToF on HAMMER/ARKitScenes/VOID. ``meta["simulated_from"]``
   records it.
+* ``force_degradation=True`` -> any native input is discarded and the sample is
+  treated as GT only (previous rule); ``meta["forced_degradation"]`` is True.
 """
 
 from __future__ import annotations
@@ -161,6 +163,9 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
 
     Everything else -- unit conversion checks, resizing, deriving the missing
     input form, mask construction, split filtering -- happens here, once.
+
+    ``force_degradation=True`` ignores the native ``sparse_depth`` / ``lr_depth``
+    and synthesizes the input from GT with ``degradation`` (which is then required).
     """
 
     info: DatasetInfo = DatasetInfo(name="base", modality="gt_only")
@@ -171,6 +176,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         root: str | Path,
         split: str = "test",
         degradation: Any = None,
+        force_degradation: bool = False,
         split_file: str | Path | None = None,
         target_size: Sequence[int] | None = None,
         max_samples: int | None = None,
@@ -194,6 +200,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             self.root = data_root() / self.root
         self.split = split
         self.degradation = degradation
+        self.force_degradation = bool(force_degradation)
         self.target_size = tuple(target_size) if target_size else None
         self.lr_scale = int(lr_scale)
         self.seed = int(seed)
@@ -201,6 +208,12 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         self.min_depth = float(min_depth if min_depth is not None else self.info.min_depth)
         self.max_depth = float(max_depth if max_depth is not None else self.info.max_depth)
         self.extra = kwargs
+
+        if self.force_degradation and self.degradation is None:
+            raise ValueError(
+                f"[{self.info.name}] force_degradation=True but no degradation model was "
+                "configured. Pass degradation=... (configs/degradation/*.yaml)."
+            )
 
         if strict and not self.root.exists():
             raise FileNotFoundError(
@@ -257,6 +270,8 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
 
         sparse = raw.get("sparse_depth")
         lr = raw.get("lr_depth")
+        if self.force_degradation:  # discard the sensor input, synthesize it from GT below
+            sparse = lr = None
 
         if self.target_size is not None:
             rgb = resize_rgb(rgb, self.target_size)
@@ -339,6 +354,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             "lr_scale": round(h / lr.shape[0]) if lr.shape[0] else 1,
             "sparse_is_derived": bool(sparse_is_derived),
             "lr_is_derived": bool(lr_is_derived),
+            "forced_degradation": self.force_degradation,
             "sparsity": float(1.0 - sparse_mask.mean()),
             "min_depth": self.min_depth,
             "max_depth": self.max_depth,

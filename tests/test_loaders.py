@@ -17,6 +17,7 @@ import pytest
 
 from data.degradation import build_degradation
 from data.loaders import DATASET_REGISTRY, build_dataset, validate_sample
+from data.loaders.base import BaseDepthDataset, DatasetInfo
 from utils.config import CONFIG_ROOT, load_config
 
 
@@ -141,6 +142,54 @@ def test_identity_degradation_round_trips_exactly():
     assert m["delta1"] == 1.0
 
 
+class _NativeSparse(BaseDepthDataset):
+    """Tiny in-memory dataset that ships a real sparse input, like VOID."""
+
+    info = DatasetInfo(name="native_sparse", modality="sparse", min_depth=0.3, max_depth=8.0)
+
+    def _build_index(self):
+        return [{"id": "0"}, {"id": "1"}]
+
+    def _load_raw(self, record):
+        gt = np.full((32, 48), 2.0, np.float32)
+        sparse = np.zeros_like(gt)
+        sparse[::8, ::8] = 5.0  # deliberately different from GT
+        return {
+            "rgb": np.zeros((32, 48, 3), np.float32),
+            "gt_depth": gt,
+            "sparse_depth": sparse,
+            "sample_id": record["id"],
+        }
+
+
+def test_native_input_is_used_by_default():
+    ds = _NativeSparse(root=".", degradation=build_degradation({"type": "identity"}), strict=False)
+    s = ds[0]
+    assert s["meta"]["input_modality"] == "sparse"
+    assert s["meta"]["forced_degradation"] is False
+    assert float(s["sparse_depth"].max()) == 5.0
+
+
+def test_force_degradation_replaces_native_input_with_degraded_gt():
+    ds = _NativeSparse(
+        root=".",
+        degradation=build_degradation({"type": "identity"}),
+        force_degradation=True,
+        strict=False,
+    )
+    s = ds[0]
+    validate_sample(s, "forced")
+    assert s["meta"]["input_modality"] == "synthetic"
+    assert s["meta"]["forced_degradation"] is True
+    assert np.array_equal(s["sparse_depth"], s["gt_depth"])  # identity on GT, not the 5.0 map
+    assert np.array_equal(ds[1]["sparse_depth"], ds[1]["sparse_depth"])
+
+
+def test_force_degradation_without_a_model_fails_early():
+    with pytest.raises(ValueError, match="force_degradation"):
+        _NativeSparse(root=".", degradation=None, force_degradation=True, strict=False)
+
+
 # --------------------------------------------------------------------------
 # real datasets: run if present, skip if not
 # --------------------------------------------------------------------------
@@ -173,6 +222,7 @@ def test_every_registered_dataset_has_a_config():
         {"type": "dtof_sim", "zones_h": 8, "zones_w": 8},
         {"type": "bicubic_sr", "scale": 4},
         {"type": "random_sparse", "n_samples": 100},
+        {"type": "projector_shadow"},
         {"type": "identity"},
     ],
     ids=lambda c: c["type"],
@@ -191,9 +241,9 @@ def test_degradation_contract(cfg):
     assert np.array_equal(sparse, out_b["sparse_depth"]), "same seed must give the same input"
     assert "degradation" in out_a["meta"]
 
-    # `identity` and a noise-free `bicubic_sr` are deterministic by construction:
-    # they never draw from the rng, so the seed cannot change their output.
-    if cfg["type"] not in ("identity", "bicubic_sr"):
+    # `identity`, a noise-free `bicubic_sr` and `projector_shadow` are deterministic
+    # by construction: they never draw from the rng, so the seed cannot change them.
+    if cfg["type"] not in ("identity", "bicubic_sr", "projector_shadow"):
         assert not np.array_equal(sparse, deg(gt, seed=8)["sparse_depth"])
 
 
@@ -215,6 +265,79 @@ def test_astra2_degradation_produces_structured_not_random_holes():
     _labels, n = ndimage.label(holes)
     assert n > 0
     assert holes.sum() / n > 3.0, "holes look uncorrelated; the occlusion model is not firing"
+
+
+def _shadow(gt, **params):
+    deg = build_degradation({"type": "projector_shadow", **params})
+    out = deg(gt.astype(np.float32), seed=0)
+    return (out["sparse_depth"] == 0) & (gt > 0), out["meta"]
+
+
+def test_projector_shadow_no_self_shadowing_on_planes():
+    """A plane never shadows itself: no acne on a wall or on a floor seen at an angle."""
+    wall = np.full((96, 128), 2.0)
+    for t in [(0.04, 0.0, 0.0), (0.0, -0.04, 0.0), (0.03, -0.03, 0.01)]:
+        holes, meta = _shadow(wall, offset_t=t)
+        assert not holes.any() and meta["shadow_ratio"] == 0.0, t
+
+    # a real floor plane 1 m below the camera (y down): Z = fy * 1.0 / (v - cy),
+    # with the horizon above the image so every row sees the floor (~0.9-10 m)
+    f, cy = 100.0, -10.0
+    v = np.arange(96, dtype=np.float64)[:, None]
+    floor = np.repeat(f * 1.0 / (v - cy), 128, axis=1)
+    for t in [(0.04, 0.0, 0.0), (0.0, -0.04, 0.0)]:
+        holes, _ = _shadow(floor, offset_t=t, fx=f, cy=cy)
+        assert not holes.any(), t
+
+
+def test_projector_shadow_matches_stereo_occlusion_on_a_vertical_edge():
+    """Horizontal offset + vertical edge: the band the existing IR-camera model predicts."""
+    from data.degradation.active_stereo_astra2 import _occlusion_shadow
+
+    f, b, z_bg, z_fg = 570.0, 0.04, 3.0, 1.2
+    gt = np.full((64, 128), z_bg)
+    gt[:, 64:] = z_fg  # foreground on the right
+    holes, _ = _shadow(gt, offset_t=(b, 0.0, 0.0), fx=f)
+
+    expected = f * b * (1 / z_fg - 1 / z_bg)  # ~11.4 px
+    assert not holes[:, 64:].any(), "the nearer surface is never in shadow"
+    width = holes[:, :64].sum(axis=1)
+    assert np.all(np.abs(width - expected) <= 1.0), (width.min(), width.max(), expected)
+    assert holes[:, 64 - int(expected) : 64].all(), "the band sits right next to the edge"
+
+    ref = _occlusion_shadow(gt, f * b, gt > 0)
+    iou = (holes & ref).sum() / max((holes | ref).sum(), 1)
+    assert iou > 0.9, iou
+
+
+def test_projector_shadow_holes_below_a_nosing_need_a_vertical_offset():
+    """Horizontal edge, near surface on top: holes appear below it only for ty < 0."""
+    z_bg, z_fg = 3.0, 1.2
+    gt = np.full((96, 128), z_bg)
+    gt[:48] = z_fg  # the nosing / near step occupies the upper half
+
+    above, _ = _shadow(gt, offset_t=(0.0, -0.04, 0.0))
+    assert above[:48].sum() == 0
+    assert above[48:52].all(), "projector above the camera: a band right below the edge"
+
+    below, _ = _shadow(gt, offset_t=(0.0, 0.04, 0.0))
+    assert not below.any(), "projector below the camera: the edge casts nothing downwards"
+
+    side, _ = _shadow(gt, offset_t=(0.04, 0.0, 0.0))
+    assert not side.any(), "a horizontal offset casts no shadow across a horizontal edge"
+
+
+def test_projector_shadow_fov_clip_cuts_a_border_band():
+    f, tx, z = 570.0, 0.04, 2.0
+    wall = np.full((48, 96), z)
+
+    holes, _ = _shadow(wall, offset_t=(tx, 0.0, 0.0), fx=f, fov_clip=True)
+    width = holes.sum(axis=1)
+    assert np.all(np.abs(width - f * tx / z) <= 1.0), (width.min(), f * tx / z)
+    assert holes[:, :10].all() and not holes[:, 20:].any(), "the band is on the left border"
+
+    holes, _ = _shadow(wall, offset_t=(tx, 0.0, 0.0), fx=f, fov_clip=False)
+    assert not holes.any()
 
 
 def test_dtof_sim_writes_at_most_one_value_per_zone():
