@@ -1,13 +1,13 @@
-# Floor for the x8 SR protocol on MinJiang: bicubic up from the LR grid.
+# Floor for the x4 SR protocol on MinJiang: bicubic up from the LR grid.
 #
-# ⚠ Same caveat as nn_fill_minjiang_dtof: bicubic_x8 low-passes the GT and hands
+# ⚠ Same caveat as nn_fill_minjiang_dtof: bicubic_x4 low-passes the GT and hands
 # it back, so this floor is GT-through-a-filter, with no scale error and no
 # holes. Beating it is the minimum bar for an SR method, not a strong result --
 # and WAVE clears it by 27-46% on every metric.
 defaults:
   - dataset: minjiang
   - model: bicubic
-  - degradation: bicubic_x8
+  - degradation: bicubic_x4
 
 seed: 0
 degradation:
@@ -24,4 +24,4 @@ runtime:
   iters: 50
 tracking:
   backend: none
-notes: "floor for the x8 SR protocol; GT-derived input, so optimistic by construction"
+notes: "floor for the x4 SR protocol; GT-derived input, so optimistic by construction"

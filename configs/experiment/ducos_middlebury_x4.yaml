@@ -1,3 +1,6 @@
+# Regression anchor: DuCos paper (arXiv:2503.04171) Tab. 1, x4 Middlebury RMSE = 1.45.
+# Reproduced 2026-10-05 on the server, PIL bicubic LR: 0.0057 -> 1.45 -- exact.
+# If this moves, the SR protocol or the adapter broke (see metrics_protocol.md).
 # DuCos x4 on middlebury (30 pairs): reproduction check against the DuCos paper.
 # Upstream reports RMSE on the 0-255 scale (metric_func.py::midd_calc_rmse), so
 # compare OUR rmse x 255 with their table. Depth is NOT metres.

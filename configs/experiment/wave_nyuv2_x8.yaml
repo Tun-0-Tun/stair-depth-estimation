@@ -1,3 +1,5 @@
+# Regression anchor: WAVE paper (arXiv:2608.25302) Tab. 3 (NYU-trained), x8 NYU v2 RMSE = 2.50 cm.
+# Reproduced 2026-10-05 on the server, PIL bicubic LR: 0.0250 m -> 2.50 cm.
 # WAVE x8 guided depth SR on NYUv2 (synthetic bicubic protocol).
 defaults:
   - dataset: nyuv2

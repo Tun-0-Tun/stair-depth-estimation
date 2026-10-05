@@ -1,9 +1,7 @@
-# Regression anchor: WAVE paper (arXiv:2608.25302) Tab. 1 (NYU-trained), x32 NYU v2 RMSE = 7.90 cm.
-# Reproduced 2026-10-05 on the server, PIL bicubic LR: 0.0797 m -> 7.97 cm.
-# WAVE x32 guided depth SR on NYUv2 (synthetic bicubic protocol).
+# Floor for wave_nyuv2_x32: bicubic x32 up, same 449 frames and protocol.
 defaults:
   - dataset: nyuv2
-  - model: wave
+  - model: bicubic
   - degradation: bicubic_x32
 
 seed: 0
@@ -15,9 +13,6 @@ dataset:
   layout: mat
   mat_range: [1000, 1449]
   simulate_from: gt
-model:
-  checkpoint: checkpoints/wave/NYU32x.pth
-  scale: 32
 eval:
   crop: border6
   pooling: image
@@ -29,4 +24,4 @@ runtime:
   iters: 50
 tracking:
   backend: none
-notes: "min/max from the LR input, not GT as upstream; rgb_norm unverified"
+notes: "floor for x32 SR on NYU"

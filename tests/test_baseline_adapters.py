@@ -312,3 +312,19 @@ def test_bicubic_sr_reproduces_the_dsr_papers_lr_input_exactly():
     )
     ours = floor.load().predict(np.zeros((64, 96, 3), np.float32), lr)
     assert np.allclose(ours, upstream, atol=1e-6)
+
+
+def test_fill_holes_keeps_sensor_holes_out_of_the_lr_input():
+    """MinJiang's GT is the sensor, with 0 = hole. The anti-aliased x8 resize spreads
+    each hole's zeros over ~32 px of LR; WAVE then lost to bicubic on RMSE."""
+    import numpy as np
+
+    from data.degradation import build_degradation
+
+    gt = np.full((64, 64), 2.0, np.float32)
+    gt[28:36, 28:36] = 0.0  # one sensor hole
+    cfg = {"type": "bicubic_sr", "scale": 8, "backend": "pil"}
+    smeared = build_degradation(cfg)(gt, seed=0)["lr_depth"]
+    filled = build_degradation({**cfg, "fill_holes": True})(gt, seed=0)["lr_depth"]
+    assert smeared.min() < 1.5, "the failure this guards against"
+    assert np.allclose(filled, 2.0, atol=1e-4)

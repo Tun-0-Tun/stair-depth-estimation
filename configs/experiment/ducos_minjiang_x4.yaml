@@ -1,7 +1,7 @@
-# DuCos x4 on real stairs, bicubic x4 from GT. Zero-shot (synthetic x4 weights).
-# rgbd_stair: 154 real stair frames, GT is the 8-bit-quantised sensor (~18 mm step) -> optimistic
+# DuCos x4 on MinJiang stairs, bicubic x4 from the sensor depth (holes filled first).
+# GT is the sensor itself -> optimistic. Zero-shot.
 defaults:
-  - dataset: rgbd_stair
+  - dataset: minjiang
   - model: ducos
   - degradation: bicubic_x4
 
@@ -15,12 +15,12 @@ model:
 eval:
   crop: none
   pooling: image
-  min_depth: 0.2
-  max_depth: 10.0
+  min_depth: 0.3
+  max_depth: 8.0
 runtime:
   measure: true
   warmup: 10
   iters: 50
 tracking:
   backend: none
-notes: "bicubic x4 from sensor GT; zero-shot"
+notes: "bicubic x4 from sensor depth, holes filled; optimistic; zero-shot"

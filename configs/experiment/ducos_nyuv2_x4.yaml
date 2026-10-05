@@ -1,3 +1,6 @@
+# Regression anchor: DuCos paper (arXiv:2503.04171) Tab. 1, x4 NYU v2 RMSE = 2.60 cm.
+# Reproduced 2026-10-05 on the server, PIL bicubic LR: 0.0260 m -> 2.60 cm -- exact.
+# If this moves, the SR protocol or the adapter broke (see metrics_protocol.md).
 # The classic synthetic x4 depth-SR protocol on NYUv2.
 defaults:
   - dataset: nyuv2
