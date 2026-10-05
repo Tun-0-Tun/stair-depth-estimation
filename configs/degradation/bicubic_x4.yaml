@@ -3,3 +3,4 @@ type: bicubic_sr
 scale: 4
 mode: bicubic
 noisy: false
+backend: pil            # the DSR papers' own (anti-aliased) resize; torch was aliased

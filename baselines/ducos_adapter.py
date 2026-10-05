@@ -47,7 +47,7 @@ from typing import Any
 import numpy as np
 
 from baselines.base import Availability, BaselineModel, add_third_party_to_path, register_baseline
-from utils.misc import resize_depth, resize_rgb
+from utils.misc import resize_depth, resize_pil, resize_rgb
 
 __all__ = ["DuCosAdapter"]
 
@@ -88,9 +88,11 @@ class DuCosAdapter(BaselineModel):
         scale: int = 4,
         model_name: str = "DuCos",
         depth_anything_ckpt: str | None = "checkpoints/depth_anything_v2_vits.pth",
+        upsample: str = "torch",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
+        self.upsample = upsample
         self.scale = int(scale)
         self.model_name = model_name
         self.depth_anything_ckpt = depth_anything_ckpt
@@ -176,7 +178,12 @@ class DuCosAdapter(BaselineModel):
         h, w = rgb.shape[:2]
 
         # 2. LR depth -> dense HR grid, exactly as the upstream test scripts do
-        dep = depth_in if depth_in.shape == (h, w) else resize_depth(depth_in, (h, w), "bicubic")
+        if depth_in.shape == (h, w):
+            dep = depth_in
+        elif self.upsample == "pil":  # upstream: Image.resize(..., BICUBIC)
+            dep = resize_pil(depth_in, (h, w))
+        else:
+            dep = resize_depth(depth_in, (h, w), "bicubic")
 
         # 1. per-sample min-max normalisation (theirs, reproduced verbatim)
         d_min, d_max = float(np.min(dep)), float(np.max(dep))

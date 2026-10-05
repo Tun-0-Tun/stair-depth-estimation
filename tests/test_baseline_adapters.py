@@ -285,3 +285,30 @@ def test_local_bilateral_smoothing_keeps_a_step_and_leaves_flat_fields_alone():
     assert sm_s[16, 2] == pytest.approx(1.0, abs=1e-3)
     assert sm_s[16, 29] == pytest.approx(5.0, abs=1e-3)
     assert sm_s.min() >= 1.0 - 1e-6 and sm_s.max() <= 5.0 + 1e-6
+
+
+def test_bicubic_sr_reproduces_the_dsr_papers_lr_input_exactly():
+    """DuCos/DKN/FDSR build LR with PIL bicubic down + up. Torch's aliased resize
+    gave a different input: the bicubic floor was 2.47 instead of ~2.3 on Middlebury
+    x4 and DuCos, fed an LR map it was never trained on, lost to that floor."""
+    Image = pytest.importorskip("PIL.Image")
+    import numpy as np
+
+    from baselines import build_baseline
+    from data.degradation import build_degradation
+
+    rng = np.random.default_rng(0)
+    gt = (rng.random((64, 96)) * 0.5 + np.linspace(0.2, 0.8, 96)[None]).astype(np.float32)
+
+    def pil(a, hw):
+        return np.asarray(Image.fromarray(a, mode="F").resize((hw[1], hw[0]), Image.BICUBIC))
+
+    upstream = pil(pil(gt, (16, 24)), (64, 96))  # middlebury_dataloader.py, verbatim
+    lr = build_degradation({"type": "bicubic_sr", "scale": 4, "backend": "pil"})(gt, seed=0)[
+        "lr_depth"
+    ]
+    floor = build_baseline(
+        {"adapter": "bicubic", "upsample": "pil"}, device="cpu", min_depth=0, max_depth=9
+    )
+    ours = floor.load().predict(np.zeros((64, 96, 3), np.float32), lr)
+    assert np.allclose(ours, upstream, atol=1e-6)
