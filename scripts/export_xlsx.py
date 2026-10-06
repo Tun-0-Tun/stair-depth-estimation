@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""Export ``benchmark.csv`` to one .xlsx for sharing: one sheet per neural method.
+"""Export ``benchmark.csv`` to one .xlsx for sharing: one sheet per dataset.
 
     uv run --with openpyxl python scripts/export_xlsx.py
     uv run --with openpyxl python scripts/export_xlsx.py --out results.xlsx
 
-Each sheet holds the method's rows plus the no-training reference rows that run on
-the same protocol, every metric, and -- where the paper reports one -- the paper's
-RMSE next to ours in the paper's units.  The latest row per experiment is used, so
-re-running after new experiments just refreshes the file.  Experiments that exist
-as configs but have no row are listed on stdout.
+Each sheet opens with what the dataset is and how every method was run on it,
+then lists all methods on that dataset -- DEPTHOR, DuCos, WAVE and the
+no-training reference rows -- with every metric and, where the paper reports one,
+the paper's RMSE next to ours in the paper's units.  The latest row per experiment
+is used, so re-running after new experiments just refreshes the file.  Experiments
+that exist as configs but have no row are listed on stdout.
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import math
 import re
 import shutil
 import tempfile
@@ -30,54 +32,166 @@ from openpyxl.utils import get_column_letter
 from utils.config import CONFIG_ROOT
 from utils.results import RESULTS_DIR, migrate_summary_header
 
-# sheet -> (neural method key, experiment-name regex of every row that belongs to it)
-SHEETS: dict[str, tuple[str, str]] = {
-    "DEPTHOR": (
-        "depthor",
-        r"^(depthor|nn_fill|local_bilateral)_",
-    ),
-    "DuCos": (
-        "ducos",
-        r"^(ducos_|bicubic_.*_x4$|bicubic_arkitscenes$)",
-    ),
-    # wave_zju_l5_* / wave_void_stairs_* are invalid protocols (metrics_protocol.md)
-    "WAVE": (
-        "wave",
-        r"^(wave_(minjiang|nyuv2|rgbd_stair|arkitscenes)|bicubic_.*_x(8|16|32)$|bicubic_arkitscenes$)",
-    ),
+NEURAL = {"depthor": "DEPTHOR", "ducos": "DuCos", "wave": "WAVE"}
+SHOWN = {**NEURAL, "nn_fill": "nn_fill", "local_bilateral": "local_bilateral", "bicubic": "bicubic"}
+
+# experiment-name regex of every row that is exported.  wave_zju_l5_* and
+# wave_void_stairs_* are invalid protocols (metrics_protocol.md) and stay out.
+INCLUDE = (
+    r"^(depthor|nn_fill|local_bilateral)_"
+    r"|^(ducos_|bicubic_.*_x4$|bicubic_arkitscenes$)"
+    r"|^(wave_(minjiang|nyuv2|rgbd_stair|arkitscenes)|bicubic_.*_x(8|16|32)$)"
+)
+
+# experiment -> (paper RMSE, factor ours -> paper units, source)
+PAPER: dict[str, tuple[float, float, str]] = {
+    "depthor_zju_l5": (0.350, 1, "DEPTHOR, arXiv:2504.01596, Tab. 2 (Ours-Large), ZJU-L5, м"),
+    "ducos_middlebury_x4": (1.45, 255, "DuCos, arXiv:2503.04171, Tab. 1, x4; шкала 0-255"),
+    "ducos_lu_x4": (1.38, 255, "DuCos, arXiv:2503.04171, Tab. 1, x4; шкала 0-255"),
+    "ducos_nyuv2_x4": (2.60, 100, "DuCos, arXiv:2503.04171, Tab. 1, x4; см"),
+    "wave_nyuv2_x8": (2.50, 100, "WAVE, arXiv:2608.25302, Tab. 3 (обучен на NYU); см"),
+    "wave_nyuv2_x16": (4.60, 100, "WAVE, arXiv:2608.25302, Tab. 3 (обучен на NYU); см"),
+    "wave_nyuv2_x32": (7.90, 100, "WAVE, arXiv:2608.25302, Tab. 1 (обучен на NYU); см"),
 }
 
-# dataset -> (stairs?, units, what the ground truth is)
-DATASETS: dict[str, tuple[str, str, str]] = {
-    "zju_l5": ("нет", "м", "стерео-реконструкция"),
-    "minjiang": ("да", "м", "сам датчик (оптимистично)"),
-    "rgbd_stair": ("да", "м", "сам датчик, 8 бит (оптимистично)"),
-    "void_stairs": ("да", "м", "плотный эталон VOID"),
-    "hammer": ("нет", "м", "лазер"),
-    "arkitscenes": ("нет", "м", "лазер"),
-    "nyuv2": ("нет", "м", "Kinect, заполненная глубина"),
-    "middlebury": ("нет", "норм. 0-1, НЕ метры", "структурированный свет"),
-    "lu": ("нет", "норм. 0-1, НЕ метры", "ASUS Xtion"),
-}
+DTOF = (
+    "в каждой из 64 зон (сетка 8×8) берётся самая частая глубина, к ней добавляется шум "
+    "(1 см + 1.2% расстояния), 5% зон выпадают; на вход идёт по одному пикселю на зону - "
+    "так, как DEPTHOR обучали"
+)
+SR_NOTE = "веса не дообучались на этих данных (zero-shot)"
 
-# (sheet, experiment) -> (paper RMSE, factor ours->paper units, source)
-PAPER: dict[tuple[str, str], tuple[float, float, str]] = {
-    ("DEPTHOR", "depthor_zju_l5"): (
-        0.350,
-        1,
-        "DEPTHOR, arXiv:2504.01596, Tab. 2 (Ours-Large), ZJU-L5, м",
-    ),
-    ("DuCos", "ducos_middlebury_x4"): (
-        1.45,
-        255,
-        "DuCos, arXiv:2503.04171, Tab. 1, x4; шкала 0-255",
-    ),
-    ("DuCos", "ducos_lu_x4"): (1.38, 255, "DuCos, arXiv:2503.04171, Tab. 1, x4; шкала 0-255"),
-    ("DuCos", "ducos_nyuv2_x4"): (2.60, 100, "DuCos, arXiv:2503.04171, Tab. 1, x4; см"),
-    ("WAVE", "wave_nyuv2_x8"): (2.50, 100, "WAVE, arXiv:2608.25302, Tab. 3 (обучен на NYU); см"),
-    ("WAVE", "wave_nyuv2_x16"): (4.60, 100, "WAVE, arXiv:2608.25302, Tab. 3 (обучен на NYU); см"),
-    ("WAVE", "wave_nyuv2_x32"): (7.90, 100, "WAVE, arXiv:2608.25302, Tab. 1 (обучен на NYU); см"),
-}
+# sheet order: stairs first.  key = value of the `dataset` column in benchmark.csv
+DATASETS: list[dict] = [
+    {
+        "key": "minjiang",
+        "sheet": "MinJiang",
+        "stairs": True,
+        "about": (
+            "Лестницы, RGB-D камера с двух точек зрения; берём сцену STAIRS, камеру CAM1: 890 кадров 640×480, "
+            "глубина в метрах (uint16, мм). Отдельного эталона нет: глубина - сам датчик, поэтому все цифры "
+            "оптимистичны, а дыры датчика (нули) не оцениваются."
+        ),
+        "runs": [
+            f"DEPTHOR, nn_fill, local_bilateral: dToF 8×8 симулируется из эталона - {DTOF}.",
+            "DuCos ×4, WAVE ×8/×16/×32 и bicubic: эталон (дыры заранее заполнены ближайшими значениями) уменьшается "
+            f"бикубикой PIL в N раз, метод восстанавливает исходный размер; {SR_NOTE}.",
+        ],
+    },
+    {
+        "key": "rgbd_stair",
+        "sheet": "RGB-D stair",
+        "stairs": True,
+        "about": (
+            "Лестницы, тестовая часть набора StairNet (RGB-D camera + IMU): 154 кадра 640×480, из них 139 в оценке "
+            "(15 с выбросом глубины отброшены). Глубина записана в 8 бит с нормировкой по кадру; в метры переведена "
+            "по диапазону из файла extrinsics (сверено с облаками точек), шаг квантования ≈18 мм. Эталон - сам "
+            "датчик, цифры оптимистичны."
+        ),
+        "runs": [
+            f"DEPTHOR, nn_fill, local_bilateral: dToF 8×8 симулируется из эталона - {DTOF}.",
+            f"DuCos ×4, WAVE ×8 и bicubic: эталон (дыры заполнены) уменьшается бикубикой PIL; {SR_NOTE}.",
+        ],
+    },
+    {
+        "key": "void_stairs",
+        "sheet": "VOID",
+        "stairs": True,
+        "about": (
+            "Лестницы (последовательности stairs0/1/3/4): 3459 кадров 640×480; в данных настоящие ~740 точек "
+            "визуально-инерциальной одометрии и плотный эталон. Соседние кадры почти одинаковы."
+        ),
+        "runs": [
+            "Строки с dToF: родные ~740 точек - не сетка 8×8 и DEPTHOR не подходят, поэтому dToF 8×8 симулируется из "
+            f"плотного эталона ({DTOF}); цифры оптимистичны.",
+            "Строка «~740 точек VIO» (local_bilateral): на родных точках датасета, без симуляции.",
+            "DuCos и WAVE не запускались: 740 точек - слишком мало для задачи повышения разрешения "
+            "(WAVE неотличим от bicubic).",
+        ],
+    },
+    {
+        "key": "zju_l5",
+        "sheet": "ZJU-L5",
+        "stairs": False,
+        "about": (
+            "Офисы, кафе, лаборатория; 527 тестовых кадров 640×480. Настоящий датчик dToF VL53L5CX 8×8 зон, эталон - "
+            "стереореконструкция. Родной датасет DEPTHOR; не лестницы."
+        ),
+        "runs": [
+            "DEPTHOR: вход - 64 значения настоящего датчика, по одному пикселю в центре каждой зоны (как в коде авторов), "
+            "без симуляции. Это опорная точка: RMSE сверяется со статьёй.",
+            "local_bilateral: те же 64 точки + Depth Anything V2 (без обучения под задачу). nn_fill, bicubic: "
+            "ближайшая зона / бикубика по сетке зон, RGB не используется.",
+            "DuCos и WAVE не запускались: 64 зоны - не вход для повышения разрешения.",
+        ],
+    },
+    {
+        "key": "hammer",
+        "sheet": "HAMMER",
+        "stairs": False,
+        "about": (
+            "Комнатные сцены с несколькими датчиками (тестовые сцены HAMMER): 2828 кадров ≈1224×1024; D435 (активное "
+            "стерео, ближе всего к Astra 2), L515 (dToF), эталон - лазер. Не лестницы."
+        ),
+        "runs": [
+            f"DEPTHOR, nn_fill, local_bilateral: 64 зоны строятся из глубины D435 ({DTOF}). Вход несёт настоящие "
+            "ошибки датчика, а эталон - независимый лазер, так что цифры честные.",
+        ],
+    },
+    {
+        "key": "arkitscenes",
+        "sheet": "ARKitScenes",
+        "stairs": False,
+        "about": (
+            "Комнаты; подмножество повышения разрешения, часть Validation: настоящий LiDAR iPad 256×192 на входе и "
+            "лазерный эталон 1920×1440 (отношение 7.5). Число кадров - в столбце «Кадров» (весь набор ≈5600, при "
+            "ускоренном прогоне каждый 10-й; кадры с повёрнутым RGB пропущены). Не лестницы."
+        ),
+        "runs": [
+            f"DEPTHOR, nn_fill, local_bilateral: 64 зоны строятся из настоящей глубины LiDAR ({DTOF}), оценка по лазеру.",
+            "DuCos, WAVE, bicubic: вход - настоящая карта LiDAR без симуляции. Веса DuCos ×4 и WAVE ×8 применяются к "
+            "отношению 7.5 - вне распределения, на которое они обучены.",
+        ],
+    },
+    {
+        "key": "nyuv2",
+        "sheet": "NYUv2",
+        "stairs": False,
+        "about": (
+            "Комнаты; протокол статей по повышению разрешения: последние 449 из 1449 размеченных кадров "
+            "(nyu_depth_v2_labeled.mat), 480×640, эталон - заполненная глубина Kinect. Не лестницы. Здесь есть "
+            "числа из статей, столбцы «по статье» заполнены."
+        ),
+        "runs": [
+            "DuCos ×4, WAVE ×8/×16/×32 и bicubic: эталон уменьшается бикубикой PIL в N раз (как у авторов), по краям "
+            "обрезается 6 пикселей. В статьях RMSE дан в сантиметрах (наш × 100). DEPTHOR не запускался.",
+        ],
+    },
+    {
+        "key": "middlebury",
+        "sheet": "Middlebury",
+        "stairs": False,
+        "about": (
+            "Классический набор для повышения разрешения, 30 пар. Глубина - 8 бит, НЕ метры: все RMSE в нормированной "
+            "шкале 0-1; число из статьи = наш RMSE × 255. Не лестницы."
+        ),
+        "runs": [
+            "DuCos ×4 и bicubic: эталон уменьшается бикубикой PIL в 4 раза, обрезка 6 пикселей по краям."
+        ],
+    },
+    {
+        "key": "lu",
+        "sheet": "Lu",
+        "stairs": False,
+        "about": (
+            "Классический набор для повышения разрешения, 6 пар (ASUS Xtion). Глубина - 8 бит, НЕ метры: RMSE в шкале "
+            "0-1; число из статьи = наш RMSE × 255. Не лестницы."
+        ),
+        "runs": [
+            "DuCos ×4 и bicubic: эталон уменьшается бикубикой PIL в 4 раза, обрезка 6 пикселей по краям."
+        ],
+    },
+]
 
 # (header, csv field, number format); ↓ lower is better, ↑ higher
 METRICS = [
@@ -93,13 +207,20 @@ METRICS = [
     ("FPS ↑", "fps", "0.0"),
     ("Задержка, мс ↓", "latency_ms_median", "0.0"),
 ]
+PAPER_COLS = ("RMSE по статье", "× к ед. статьи", "Наш RMSE в ед. статьи", "Откл., %")
 HEAD = (
-    ["Эксперимент", "Датасет", "Лестницы", "Вход", "Эталон", "Метод", "Роль", "Кадров"]
+    ["Эксперимент", "Вход (протокол)", "Метод", "Роль", "Кадров"]
     + [m[0] for m in METRICS]
-    + ["Ед. RMSE", "RMSE по статье", "× к ед. статьи", "Наш RMSE в ед. статьи", "Откл., %"]
-    + ["Примечание", "Устройство", "Коммит", "Дата"]
+    + list(PAPER_COLS)
+    + ["Устройство", "Коммит", "Дата"]
 )
 FONT = "Arial"
+LEGEND = (
+    "Голубым выделена нейросеть, остальные строки - ориентиры без обучения под задачу на том же входе. "
+    "↓ - меньше лучше, ↑ - больше лучше; метрики считаются по пикселям, где у эталона есть значение. "
+    "FPS зависит от устройства и размера кадра; DEPTHOR измерен через bpops_shim (замена CUDA-расширения на PyTorch), "
+    "скорость с DuCos и WAVE не сравнивать."
+)
 
 
 def load_rows(path: Path) -> list[dict[str, str]]:
@@ -119,35 +240,26 @@ def latest_per_experiment(rows: list[dict[str, str]]) -> dict[str, dict[str, str
         key = r["experiment"]
         if key == "adhoc":
             if r["dataset"] != "zju_l5" or r["method"] not in ("nn_fill", "bicubic"):
-                continue  # the only matrix rows we keep: floors on ZJU-L5, beside DEPTHOR
+                continue  # the only matrix rows we keep: the floors on ZJU-L5, beside DEPTHOR
             key = f"{r['dataset']}/{r['method']}"
         out[key] = r
     return out
 
 
-def protocol(sheet: str, exp: str, r: dict[str, str]) -> str:
-    ds = r["dataset"]
-    if sheet == "DEPTHOR":
-        if r["degradation"] == "dtof_sim":
-            src = "датчика" if ds in ("hammer", "arkitscenes") else "эталона"
-            return f"симул. dToF 8×8 из {src}"
-        return "~740 точек VIO" if ds == "void_stairs" else "реальный dToF 8×8"
+def protocol(exp: str, r: dict[str, str]) -> tuple[int, str]:
+    """(sort rank, label): the input the method was given."""
+    ds, deg = r["dataset"], r["degradation"]
+    if deg == "dtof_sim":
+        src = "датчика" if ds in ("hammer", "arkitscenes") else "эталона"
+        return 0, f"симул. dToF 8×8 из {src}"
     m = re.search(r"_x(\d+)$", exp)
     if m:
-        return f"bicubic ×{m.group(1)} из эталона"
-    return "реальный LiDAR 256×192 (×7.5)"
-
-
-def sort_key(sheet: str, r: dict[str, str], exp: str):
-    order = list(DATASETS)
-    scale = re.search(r"_x(\d+)$", exp)
-    neural = SHEETS[sheet][0] == r["method"]
-    return (
-        order.index(r["dataset"]) if r["dataset"] in order else 99,
-        int(scale.group(1)) if scale else 0,
-        not neural,
-        r["method"],
-    )
+        return int(m.group(1)), f"bicubic ×{m.group(1)} из эталона"
+    if ds == "void_stairs":
+        return 0, "~740 точек VIO"
+    if ds == "arkitscenes":
+        return 100, "реальный LiDAR 256×192 (×7.5)"
+    return 0, "реальный dToF 8×8"
 
 
 def num(v: str):
@@ -157,29 +269,40 @@ def num(v: str):
         return None
 
 
-def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, dict[str, list[str]]]:
+def add_text(
+    ws, row: int, text: str, last_col: int, *, bold=False, size=10, italic=False, chars=150
+) -> int:
+    """One wrapped paragraph merged across the table width; returns the next free row."""
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=last_col)
+    c = ws.cell(row, 1, text)
+    c.font = Font(name=FONT, bold=bold, size=size, italic=italic)
+    c.alignment = Alignment(wrap_text=True, vertical="top")
+    ws.row_dimensions[row].height = 14 * max(1, math.ceil(len(text) / chars)) + 2
+    return row + 1
+
+
+def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list[str]]:
     latest = latest_per_experiment(rows)
+    # "dataset/method" keys are the matrix floors on ZJU-L5
+    picked = {e: r for e, r in latest.items() if re.search(INCLUDE, e) or "/" in e}
     wb = Workbook()
     wb.remove(wb.active)
-    missing: dict[str, list[str]] = {}
     thin = Side(style="thin", color="999999")
-    notes = {
-        "DEPTHOR": "FPS DEPTHOR измерен через bpops_shim (замена CUDA-расширения на PyTorch): скорость с DuCos/WAVE не сравнивать.",
-        "DuCos": "Все ячейки DuCos - ×4 (один чекпойнт). Middlebury/Lu: RMSE в шкале 0-1; ×255 = число из статьи.",
-        "WAVE": "WAVE: по чекпойнту на масштаб (×8/×16/×32). Лестничные датасеты: эталон - сам датчик, цифры оптимистичны.",
-    }
-    for sheet, (method, pattern) in SHEETS.items():
-        ws = wb.create_sheet(sheet)
-        ws["A1"] = f"{sheet}: все метрики"
-        ws["A1"].font = Font(name=FONT, bold=True, size=12)
-        ws["A2"] = notes[sheet]
-        ws["A3"] = (
-            "Голубым выделена сама нейросеть; остальные строки - ориентиры без обучения под задачу, на том же входе. "
-            "↓ - меньше лучше, ↑ - больше лучше."
-        )
-        for c in ("A2", "A3"):
-            ws[c].font = Font(name=FONT, size=9, italic=True)
-        head_row = 5
+    head_cols = len(HEAD)
+
+    for d in DATASETS:
+        ws = wb.create_sheet(d["sheet"])
+        if d["stairs"]:
+            ws.sheet_properties.tabColor = "ED7D31"
+        title = f"{d['sheet']}: лестницы" if d["stairs"] else d["sheet"]
+        r_i = add_text(ws, 1, title, head_cols, bold=True, size=13)
+        r_i = add_text(ws, r_i, "Что это. " + d["about"], head_cols)
+        r_i = add_text(ws, r_i, "Как запускали методы:", head_cols, bold=True)
+        for line in d["runs"]:
+            r_i = add_text(ws, r_i, "• " + line, head_cols)
+        r_i = add_text(ws, r_i, LEGEND, head_cols, size=9, italic=True)
+        head_row = r_i + 1
+
         for j, h in enumerate(HEAD, 1):
             c = ws.cell(head_row, j, h)
             c.font = Font(name=FONT, bold=True, size=10)
@@ -188,96 +311,68 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, dict
             c.border = Border(bottom=Side(style="medium"))
         col = {h: j for j, h in enumerate(HEAD, 1)}
 
-        # "dataset/method" keys are the matrix floors on ZJU-L5, which sit beside DEPTHOR
-        picked = sorted(
-            (
-                (e, r)
-                for e, r in latest.items()
-                if re.search(pattern, e) or (sheet == "DEPTHOR" and "/" in e)
-            ),
-            key=lambda kv: sort_key(sheet, kv[1], kv[0]),
-        )
-        missing[sheet] = sorted(e for e in configs if re.search(pattern, e) and e not in latest)
+        items = []
+        for exp, r in picked.items():
+            if r["dataset"] != d["key"] or r["method"] not in SHOWN:
+                continue
+            rank, label = protocol(exp, r)
+            items.append((rank, label, r["method"] not in NEURAL, r["method"], exp, r))
+        items.sort(key=lambda t: t[:5])
 
-        prev_ds, row_i = None, head_row + 1
-        for exp, r in picked:
-            ds = r["dataset"]
-            stairs, units, gt = DATASETS.get(ds, ("", "", ""))
-            neural = r["method"] == method
+        prev_label, row_i = None, head_row + 1
+        for _, label, floor, method, exp, r in items:
+            fill = None if floor else PatternFill("solid", fgColor="DDEBF7")
             vals = [
                 exp,
-                ds,
-                stairs,
-                protocol(sheet, exp, r),
-                gt,
-                r["method"],
-                "нейросеть" if neural else "ориентир",
+                label,
+                SHOWN[method],
+                "ориентир" if floor else "нейросеть",
                 num(r["n_samples"]),
             ]
             vals += [num(r[m[1]]) for m in METRICS]
-            vals += [units]
             for j, v in enumerate(vals, 1):
                 c = ws.cell(row_i, j, v)
-                c.font = Font(name=FONT, size=10, bold=neural and j in (1, 6))
-                if neural:
-                    c.fill = PatternFill("solid", fgColor="DDEBF7")
-                if prev_ds is not None and ds != prev_ds:
-                    c.border = Border(top=thin)
+                c.font = Font(name=FONT, size=10, bold=(not floor) and j in (1, 3))
             for name, _, fmt in METRICS:
                 ws.cell(row_i, col[name]).number_format = fmt
             ws.cell(row_i, col["Кадров"]).number_format = "#,##0"
 
-            paper = PAPER.get((sheet, exp))
+            paper = PAPER.get(exp)
             if paper:
                 p_val, factor, src = paper
                 rmse_cell = f"{get_column_letter(col['RMSE ↓'])}{row_i}"
-                pc, fc = col["RMSE по статье"], col["× к ед. статьи"]
+                pc, fc, oc, dc = (col[n] for n in PAPER_COLS)
                 ws.cell(row_i, pc, p_val).font = Font(name=FONT, size=10, color="0000FF")
                 ws.cell(row_i, pc).comment = Comment(src, "export_xlsx")
                 ws.cell(row_i, fc, factor).font = Font(name=FONT, size=10, color="0000FF")
-                ours, p_ref, f_ref = (
-                    col["Наш RMSE в ед. статьи"],
-                    f"{get_column_letter(pc)}{row_i}",
-                    f"{get_column_letter(fc)}{row_i}",
-                )
-                ws.cell(row_i, ours, f"={rmse_cell}*{f_ref}").number_format = "0.000"
+                p_ref, f_ref = f"{get_column_letter(pc)}{row_i}", f"{get_column_letter(fc)}{row_i}"
+                ws.cell(row_i, oc, f"={rmse_cell}*{f_ref}").number_format = "0.000"
                 ws.cell(
-                    row_i, col["Откл., %"], f"=({get_column_letter(ours)}{row_i}-{p_ref})/{p_ref}"
+                    row_i, dc, f"=({get_column_letter(oc)}{row_i}-{p_ref})/{p_ref}"
                 ).number_format = "0.0%"
-                for name in ("Наш RMSE в ед. статьи", "Откл., %"):
-                    ws.cell(row_i, col[name]).font = Font(name=FONT, size=10)
-                if neural:
-                    for name in (
-                        "RMSE по статье",
-                        "× к ед. статьи",
-                        "Наш RMSE в ед. статьи",
-                        "Откл., %",
-                    ):
-                        ws.cell(row_i, col[name]).fill = PatternFill("solid", fgColor="DDEBF7")
+                for n in ("Наш RMSE в ед. статьи", "Откл., %"):
+                    ws.cell(row_i, col[n]).font = Font(name=FONT, size=10)
 
-            tail = [
-                r["notes"],
-                r["device"],
-                r["git_commit"],
-                f"{r['timestamp'][:4]}-{r['timestamp'][4:6]}-{r['timestamp'][6:8]}",
-            ]
+            stamp = r["timestamp"]
+            tail = [r["device"], r["git_commit"], f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}"]
             for k, v in enumerate(tail):
-                c = ws.cell(row_i, col["Примечание"] + k, v)
-                c.font = Font(name=FONT, size=9)
-            prev_ds, row_i = ds, row_i + 1
+                ws.cell(row_i, col["Устройство"] + k, v).font = Font(name=FONT, size=9)
+            for j in range(1, head_cols + 1):
+                c = ws.cell(row_i, j)
+                if fill:
+                    c.fill = fill
+                if prev_label is not None and label != prev_label:
+                    c.border = Border(top=thin)
+            prev_label, row_i = label, row_i + 1
 
+        if row_i == head_row + 1:
+            ws.cell(row_i, 1, "результатов пока нет").font = Font(name=FONT, size=10, italic=True)
         widths = {
             "Эксперимент": 30,
-            "Датасет": 12,
-            "Лестницы": 9,
-            "Вход": 26,
-            "Эталон": 28,
+            "Вход (протокол)": 28,
             "Метод": 16,
             "Роль": 11,
             "Кадров": 8,
-            "Ед. RMSE": 18,
-            "Примечание": 48,
-            "Устройство": 9,
             "Коммит": 16,
             "Дата": 11,
         }
@@ -286,8 +381,10 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, dict
         ws.row_dimensions[head_row].height = 42
         ws.freeze_panes = ws.cell(head_row + 1, 3)
         ws.auto_filter.ref = (
-            f"A{head_row}:{get_column_letter(len(HEAD))}{max(row_i - 1, head_row + 1)}"
+            f"A{head_row}:{get_column_letter(head_cols)}{max(row_i - 1, head_row + 1)}"
         )
+
+    missing = sorted(e for e in configs if re.search(INCLUDE, e) and e not in latest)
     return wb, missing
 
 
@@ -308,9 +405,8 @@ def main() -> int:
     wb, missing = build(rows, configs)
     wb.save(args.out)
     print(f"{len(rows)} rows read, wrote {args.out}")
-    for sheet, names in missing.items():
-        if names:
-            print(f"[{sheet}] no result yet for: {' '.join(names)}")
+    if missing:
+        print(f"no result yet for: {' '.join(missing)}")
     return 0
 
 
