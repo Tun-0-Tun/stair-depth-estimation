@@ -284,7 +284,7 @@ def test_local_bilateral_smoothing_keeps_a_step_and_leaves_flat_fields_alone():
     # Far from the seam the values are untouched; a plain Gaussian would bleed.
     assert sm_s[16, 2] == pytest.approx(1.0, abs=1e-3)
     assert sm_s[16, 29] == pytest.approx(5.0, abs=1e-3)
-    assert sm_s.min() >= 1.0 - 1e-6 and sm_s.max() <= 5.0 + 1e-6
+    assert sm_s.min() >= 1.0 - 1e-4 and sm_s.max() <= 5.0 + 1e-4  # float32
 
 
 def test_bicubic_sr_reproduces_the_dsr_papers_lr_input_exactly():
@@ -328,3 +328,38 @@ def test_fill_holes_keeps_sensor_holes_out_of_the_lr_input():
     filled = build_degradation({**cfg, "fill_holes": True})(gt, seed=0)["lr_depth"]
     assert smeared.min() < 1.5, "the failure this guards against"
     assert np.allclose(filled, 2.0, atol=1e-4)
+
+
+def test_bilateral_torch_matches_the_float64_numpy_definition():
+    """The smoothing was ported from numpy to torch for speed (441 offsets of
+    full-frame ops were most of local_bilateral's runtime). Pin it to the plain
+    float64 definition so the port cannot drift."""
+    import numpy as np
+
+    from baselines.local_bilateral import _smooth_bilateral
+
+    rng = np.random.default_rng(0)
+    h, w, sig, rs, rmax = 24, 32, 3.0, 0.25, 7
+    s = rng.random((h, w)) * 3
+    t = rng.random((h, w)) * 2
+
+    r = max(1, min(round(2.5 * sig), rmax))
+    sr_s, sr_t = np.std(s) * rs, np.std(t) * rs
+    sp, tp = np.pad(s, r, mode="edge"), np.pad(t, r, mode="edge")
+    acc_s, acc_t, wsum = np.zeros((h, w)), np.zeros((h, w)), np.zeros((h, w))
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            spatial = np.exp(-0.5 * (dy * dy + dx * dx) / sig**2)
+            if spatial < 1e-6:
+                continue
+            sn, tn = (
+                sp[r + dy : r + dy + h, r + dx : r + dx + w],
+                tp[r + dy : r + dy + h, r + dx : r + dx + w],
+            )
+            wgt = spatial * np.exp(-0.5 * (((sn - s) / sr_s) ** 2 + ((tn - t) / sr_t) ** 2))
+            acc_s, acc_t, wsum = acc_s + wgt * sn, acc_t + wgt * tn, wsum + wgt
+
+    got_s, got_t = _smooth_bilateral(s, t, sig, rs, rmax)
+    assert np.allclose(got_s, acc_s / wsum, atol=1e-5) and np.allclose(
+        got_t, acc_t / wsum, atol=1e-5
+    )

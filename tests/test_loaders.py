@@ -607,3 +607,24 @@ def test_nyuv2_mat_range_and_simulate_from_gt_give_the_dsr_protocol(tmp_path):
     )
     assert [r["id"] for r in ds.records] == ["nyu_0004", "nyu_0005"]
     assert np.allclose(ds[0]["lr_depth"], 2.0), "input must come from the GT, not rawDepths"
+
+
+def test_arkitscenes_skips_frames_whose_rgb_is_rotated_against_the_depth(tmp_path):
+    """A portrait RGB beside a landscape depth cannot be aligned; it must be dropped and
+    counted, not fail the whole run at frame 3000 (seen on the server)."""
+    Image = pytest.importorskip("PIL.Image")
+
+    vid = tmp_path / "data" / "upsampling" / "Validation" / "1"
+    for d in ("wide", "lowres_depth", "highres_depth"):
+        (vid / d).mkdir(parents=True)
+    for name, rgb_hw in (("1_1.0", (96, 128)), ("1_2.0", (128, 96))):  # second RGB is portrait
+        Image.fromarray(np.zeros((*rgb_hw, 3), np.uint8)).save(vid / "wide" / f"{name}.png")
+        Image.fromarray(np.full((12, 16), 1500, np.uint16)).save(
+            vid / "lowres_depth" / f"{name}.png"
+        )
+        Image.fromarray(np.full((96, 128), 1500, np.uint16)).save(
+            vid / "highres_depth" / f"{name}.png"
+        )
+
+    ds = build_dataset({"loader": "arkitscenes", "root": str(tmp_path)})
+    assert [r["id"] for r in ds.records] == ["1/1_1.0"]

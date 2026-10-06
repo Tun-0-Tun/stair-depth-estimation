@@ -85,6 +85,11 @@ def _cell_args(dataset: str, model: str, args: argparse.Namespace) -> list[str]:
     return argv
 
 
+def _label(ds: str, mdl: str) -> str:
+    """An experiment job carries its name twice (dataset == model slot); show it once."""
+    return ds if ds == mdl else f"{ds} x {mdl}"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     stamp = time.strftime("%Y-%m-%d_%H-%M")
@@ -110,25 +115,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(f"benchmark matrix: {len(jobs)} cell(s)")
     for ds, mdl, _ in jobs:
-        print(f"  - {ds} x {mdl}")
+        print(f"  - {_label(ds, mdl)}")
     if args.dry_run:
         return 0
 
     rows: list[dict[str, Any]] = []
     failures: list[tuple[str, str, str]] = []
     for ds, mdl, cell_argv in jobs:
-        print(f"\n{'=' * 70}\n>>> {ds} x {mdl}\n{'=' * 70}")
+        print(f"\n{'=' * 70}\n>>> {_label(ds, mdl)}\n{'=' * 70}")
         try:
             code = run_baseline.main(cell_argv)
             if code != 0:
                 reason = "unavailable (see the report above)"
                 if args.auto:
-                    print(f"[skip] {ds} x {mdl}: {reason}")
+                    print(f"[skip] {_label(ds, mdl)}: {reason}")
                 failures.append((ds, mdl, reason))
                 continue
         except Exception as exc:
             reason = f"{type(exc).__name__}: {exc}".splitlines()[0][:160]
-            print(f"[error] {ds} x {mdl}: {reason}")
+            print(f"[error] {_label(ds, mdl)}: {reason}")
             if not args.auto:
                 traceback.print_exc()
             failures.append((ds, mdl, reason))
@@ -140,12 +145,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # ---- assemble the table ------------------------------------------------
     wanted = [m for m in args.metrics if m in METRIC_NAMES or m in ("fps", "latency_ms_median")]
-    columns = ["dataset", "method", "n_samples", *wanted, "notes"]
+    # `experiment` tells apart rows that share dataset and method but differ in scale
+    # or protocol (wave x8 / x16 / x32 on one dataset used to look like duplicates).
+    columns = ["experiment", "dataset", "method", "n_samples", *wanted, "notes"]
     table_rows: list[dict[str, Any]] = []
     for r in rows:
-        table_rows.append({c: r.get(c, "") for c in columns})
+        table_rows.append(
+            {
+                c: ("" if c == "experiment" and r.get(c) == "adhoc" else r.get(c, ""))
+                for c in columns
+            }
+        )
     for ds, mdl, reason in failures:
-        table_rows.append({"dataset": ds, "method": mdl, "notes": f"NOT RUN: {reason}"})
+        cell = {"experiment": ds} if ds == mdl else {"dataset": ds, "method": mdl}
+        table_rows.append({**cell, "notes": f"NOT RUN: {reason}"})
 
     stem = f"{stamp}_{_table_name(args.name, rows, failures)}"
     md = RESULTS_DIR / f"{stem}.md"

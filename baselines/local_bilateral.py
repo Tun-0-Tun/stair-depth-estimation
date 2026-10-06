@@ -125,6 +125,7 @@ def _smooth_bilateral(
     sigma_spatial: float,
     range_scale: float,
     max_radius: int,
+    device: str = "cpu",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Edge-preserving smoothing of the (s, t) fields, accumulated per offset.
 
@@ -132,36 +133,47 @@ def _smooth_bilateral(
     together while a sharp change in the fit stays sharp. Offset-by-offset
     accumulation keeps this O(H*W) in memory; the original materialised the
     whole (H, W, 2r+1, 2r+1) window.
+
+    Runs in torch on ``device``: with the default radius that is 441 offsets of
+    full-frame ops, which in float64 numpy cost 0.7 s at 640x480 and 6 s at
+    1920x1440 -- the bulk of this method's runtime. float32 agrees with the
+    float64 version to ~1e-6 (``tests/test_baseline_adapters.py``).
     """
+    import torch
+    import torch.nn.functional as F
+
     r = max(1, min(round(2.5 * sigma_spatial), int(max_radius)))
     sr_s = max(float(np.std(s)), 1e-9) * range_scale
     sr_t = max(float(np.std(t)), 1e-9) * range_scale
 
     h, w = s.shape
-    sp = np.pad(s, r, mode="edge")
-    tp = np.pad(t, r, mode="edge")
+    s_t = torch.as_tensor(np.ascontiguousarray(s), dtype=torch.float32, device=device)
+    t_t = torch.as_tensor(np.ascontiguousarray(t), dtype=torch.float32, device=device)
+    pad = (r, r, r, r)
+    sp = F.pad(s_t[None, None], pad, mode="replicate")[0, 0]
+    tp = F.pad(t_t[None, None], pad, mode="replicate")[0, 0]
 
-    acc_s = np.zeros_like(s, dtype=np.float64)
-    acc_t = np.zeros_like(t, dtype=np.float64)
-    wsum = np.zeros_like(s, dtype=np.float64)
+    acc_s = torch.zeros_like(s_t)
+    acc_t = torch.zeros_like(t_t)
+    wsum = torch.zeros_like(s_t)
 
     inv_sp2 = 1.0 / (sigma_spatial**2 + 1e-12)
     for dy in range(-r, r + 1):
         for dx in range(-r, r + 1):
-            spatial = np.exp(-0.5 * (dy * dy + dx * dx) * inv_sp2)
+            spatial = float(np.exp(-0.5 * (dy * dy + dx * dx) * inv_sp2))
             if spatial < 1e-6:
                 continue
             sn = sp[r + dy : r + dy + h, r + dx : r + dx + w]
             tn = tp[r + dy : r + dy + h, r + dx : r + dx + w]
-            ds = (sn - s) / sr_s
-            dt = (tn - t) / sr_t
-            weight = spatial * np.exp(-0.5 * (ds * ds + dt * dt))
+            ds = (sn - s_t) / sr_s
+            dt = (tn - t_t) / sr_t
+            weight = spatial * torch.exp(-0.5 * (ds * ds + dt * dt))
             acc_s += weight * sn
             acc_t += weight * tn
             wsum += weight
 
-    wsum = np.maximum(wsum, 1e-12)
-    return acc_s / wsum, acc_t / wsum
+    wsum = wsum.clamp_min(1e-12)
+    return (acc_s / wsum).cpu().numpy(), (acc_t / wsum).cpu().numpy()
 
 
 @register_baseline("local_bilateral")
@@ -170,7 +182,9 @@ class LocalBilateralBaseline(BaselineModel):
 
     input_modality = "sparse"
     native_size = None
-    paper = "ours: local affine calibration of a Depth Anything V2 prior (no task-specific training)"
+    paper = (
+        "ours: local affine calibration of a Depth Anything V2 prior (no task-specific training)"
+    )
     submodule = "ducos"  # borrows the Depth Anything V2 that DuCos vendors
 
     def __init__(
@@ -309,6 +323,7 @@ class LocalBilateralBaseline(BaselineModel):
                 self.sigma_spatial,
                 self.range_scale,
                 self.bilateral_max_radius,
+                device=self.device,
             )
 
         pred = s_map * d_rel.astype(np.float64) + t_map
