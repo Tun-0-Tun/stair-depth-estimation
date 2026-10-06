@@ -1,5 +1,11 @@
-# DuCos on a REAL low-res sensor. x4 weights on a 7.5x input: out of distribution in scale, label it.
-# ARKitScenes upsampling Validation: real iPad LiDAR 256x192 in, Faro laser GT 1920x1440
+# DuCos on a REAL low-res sensor (iPad LiDAR 256x192), no simulation.
+#
+# The frame is shrunk to 768x1024 -- exactly 4x the real LR map, the scale the x4 weights
+# were trained for, instead of the native 7.5x. At the native 1440x1920 DuCos does not fit
+# a 48 GB card: it died on frame 1 in a fresh process (44 GiB in use, DSRN's
+# compute_lagrange_multipliers) -- DuCos was built for frames up to ~640x480.
+# RGB is resized bilinearly, the laser GT with nearest (holes stay holes). Pair it with
+# bicubic_arkitscenes_768, NOT with the full-resolution bicubic/WAVE rows.
 defaults:
   - dataset: arkitscenes
   - model: ducos
@@ -7,6 +13,8 @@ defaults:
 
 seed: 0
 device: auto
+dataset:
+  target_size: [768, 1024]
 model:
   checkpoint: checkpoints/ducos/x4.pth.tar
   scale: 4
@@ -21,4 +29,4 @@ runtime:
   iters: 50
 tracking:
   backend: none
-notes: "real LiDAR input, laser GT; zero-shot; x4 weights on 7.5x input"
+notes: "real LiDAR input, laser GT at 768x1024 (exactly x4 of the LR map); zero-shot"
