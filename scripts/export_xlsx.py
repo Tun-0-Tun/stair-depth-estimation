@@ -40,7 +40,7 @@ SHOWN = {**NEURAL, "nn_fill": "nn_fill", "local_bilateral": "local_bilateral", "
 INCLUDE = (
     r"^(depthor|nn_fill|local_bilateral)_"
     r"|^(ducos_|bicubic_.*_x4$|bicubic_arkitscenes(_768)?$)"
-    r"|^(wave_(minjiang|nyuv2|rgbd_stair|arkitscenes)|bicubic_.*_x(8|16|32)$)"
+    r"|^(wave_(minjiang|nyuv2|rgbd_stair|arkitscenes|hammer)|bicubic_.*_x(8|16|32)$)"
 )
 
 # experiment -> (paper RMSE, factor ours -> paper units, source)
@@ -131,12 +131,20 @@ DATASETS: list[dict] = [
         "sheet": "HAMMER",
         "stairs": False,
         "about": (
-            "Комнатные сцены с несколькими датчиками (тестовые сцены HAMMER): 2828 кадров ≈1224×1024; D435 (активное "
-            "стерео, ближе всего к Astra 2), L515 (dToF), эталон - лазер. Не лестницы."
+            "Комнатные сцены с несколькими датчиками (тестовые сцены HAMMER): D435 (активное стерео, тот же принцип, что "
+            "у Astra 2), L515 (dToF), эталон - лазер, независимый от датчиков. Кадры ≈1224×1024. Берётся каждый 5-й кадр "
+            "каждой траектории (≈570 из 2828: соседние кадры почти одинаковы), одинаковые кадры во всех строках листа. "
+            "Не лестницы. Используем только D435: L515 и ToF в данных есть, но мы их не запускали."
         ),
         "runs": [
-            f"DEPTHOR, nn_fill, local_bilateral: 64 зоны строятся из глубины D435 ({DTOF}). Вход несёт настоящие "
-            "ошибки датчика, а эталон - независимый лазер, так что цифры честные.",
+            f"DEPTHOR, nn_fill, local_bilateral (строки «симул. dToF»): 64 зоны строятся из глубины D435 ({DTOF}). "
+            "Настоящие дыры и тени D435 при этом теряются, остаются только 64 числа.",
+            "nn_fill и local_bilateral (строки «настоящая карта D435»): на вход идёт сама карта D435 как есть, дыры "
+            "заполняются ближайшими значениями. nn_fill - это «сам датчик»: показывает, насколько ошибается D435 "
+            "против лазера. local_bilateral калибрует Depth Anything по плотным пикселям датчика (без обучения). "
+            "DEPTHOR на такой плотной карте не запускали: его вход - 64 точки.",
+            "DuCos ×4, WAVE ×8/×16/×32 и bicubic: карта D435 (дыры заранее заполнены) уменьшается бикубикой PIL в N раз, "
+            f"метод восстанавливает исходный размер, оценка по лазеру; {SR_NOTE}. Вход несёт настоящие ошибки датчика.",
         ],
     },
     {
@@ -212,10 +220,10 @@ METRICS = [
 ]
 PAPER_COLS = ("RMSE по статье", "× к ед. статьи", "Наш RMSE в ед. статьи", "Откл., %")
 HEAD = (
-    ["Эксперимент", "Вход (протокол)", "Метод", "Роль", "Кадров"]
+    ["Эксперимент", "Вход (протокол)", "Метод", "Кадров"]
     + [m[0] for m in METRICS]
     + list(PAPER_COLS)
-    + ["Устройство", "Коммит", "Дата"]
+    + ["Дата"]
 )
 FONT = "Arial"
 LEGEND = (
@@ -224,7 +232,8 @@ LEGEND = (
     "Сравнивать можно строки внутри одного блока (между линиями): нейросеть с ориентиром на том же входе. "
     "Блоки отличаются тем, сколько информации получает метод (dToF - 64 числа, ×32 - 300, ×8 - 4800), "
     "поэтому это не рейтинг методов между блоками; DuCos (×4) и WAVE (×8 и больше) тоже напрямую не сравнивать. "
-    "FPS зависит от устройства и размера кадра; DEPTHOR измерен через bpops_shim (замена CUDA-расширения на PyTorch), "
+    "FPS и задержка сняты на видеокартах RTX A6000 (кроме двух строк zju_l5/nn_fill и zju_l5/bicubic - они на CPU, "
+    "их скорость не сравнивать) и зависят от размера кадра; DEPTHOR измерен через bpops_shim (замена CUDA-расширения на PyTorch), "
     "скорость с DuCos и WAVE не сравнивать."
 )
 
@@ -260,7 +269,10 @@ def protocol(exp: str, r: dict[str, str]) -> tuple[int, str]:
         return 0, f"симул. dToF 8×8 из {src}"
     m = re.search(r"_x(\d+)$", exp)
     if m:
-        return int(m.group(1)), f"bicubic ×{m.group(1)} из эталона"
+        src = "карты D435" if ds == "hammer" else "эталона"
+        return int(m.group(1)), f"bicubic ×{m.group(1)} из {src}"
+    if ds == "hammer":
+        return 0, "настоящая карта D435 (с дырами)"
     if ds == "void_stairs":
         return 0, "~740 точек VIO"
     if ds == "arkitscenes":
@@ -334,7 +346,6 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list
                 exp,
                 label,
                 SHOWN[method],
-                "ориентир" if floor else "нейросеть",
                 num(r["n_samples"]),
             ]
             vals += [num(r[m[1]]) for m in METRICS]
@@ -362,9 +373,8 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list
                     ws.cell(row_i, col[n]).font = Font(name=FONT, size=10)
 
             stamp = r["timestamp"]
-            tail = [r["device"], r["git_commit"], f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}"]
-            for k, v in enumerate(tail):
-                ws.cell(row_i, col["Устройство"] + k, v).font = Font(name=FONT, size=9)
+            day = f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]}"
+            ws.cell(row_i, col["Дата"], day).font = Font(name=FONT, size=9)
             for j in range(1, head_cols + 1):
                 c = ws.cell(row_i, j)
                 if fill:
@@ -379,9 +389,7 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list
             "Эксперимент": 30,
             "Вход (протокол)": 28,
             "Метод": 16,
-            "Роль": 11,
             "Кадров": 8,
-            "Коммит": 16,
             "Дата": 11,
         }
         for h, j in col.items():

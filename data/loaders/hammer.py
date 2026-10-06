@@ -68,8 +68,10 @@ class HammerDataset(BaseDepthDataset):
         rgb_glob: str = "*.png",
         depth_unit_per_metre: float = 1000.0,
         scenes: Sequence[str] | None = None,
+        frame_stride: int = 1,
         **kwargs: Any,
     ) -> None:
+        self.frame_stride = max(1, int(frame_stride))
         self.input_sensor = input_sensor
         self.rgb_subdir = rgb_subdir
         self.gt_subdir = gt_subdir
@@ -92,7 +94,9 @@ class HammerDataset(BaseDepthDataset):
 
         records: list[dict[str, Any]] = []
         for seq in seq_dirs:
-            for rgb in sorted((seq / self.rgb_subdir).glob(self.rgb_glob)):
+            # per trajectory, so every one stays represented (frames of a trajectory are
+            # near-duplicates; a global stride would still sample all of them)
+            for rgb in sorted((seq / self.rgb_subdir).glob(self.rgb_glob))[:: self.frame_stride]:
                 gt = seq / self.gt_subdir / rgb.name
                 inp = seq / self.input_subdir / rgb.name
                 if not gt.exists():

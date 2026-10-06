@@ -628,3 +628,28 @@ def test_arkitscenes_skips_frames_whose_rgb_is_rotated_against_the_depth(tmp_pat
 
     ds = build_dataset({"loader": "arkitscenes", "root": str(tmp_path)})
     assert [r["id"] for r in ds.records] == ["1/1_1.0"]
+
+
+def test_hammer_frame_stride_is_per_trajectory(tmp_path):
+    """A global stride could skip a short trajectory altogether; per-trajectory keeps all."""
+    Image = pytest.importorskip("PIL.Image")
+
+    for seq, n in (("scene12_traj1_1", 12), ("scene13_traj1_1", 3)):
+        for d in ("rgb", "gt", "d435"):
+            (tmp_path / seq / d).mkdir(parents=True)
+        for i in range(n):
+            Image.fromarray(np.zeros((8, 8, 3), np.uint8)).save(
+                tmp_path / seq / "rgb" / f"{i:03d}.png"
+            )
+            for d in ("gt", "d435"):
+                Image.fromarray(np.full((8, 8), 1500, np.uint16)).save(
+                    tmp_path / seq / d / f"{i:03d}.png"
+                )
+
+    ds = build_dataset({"loader": "hammer", "root": str(tmp_path), "frame_stride": 5})
+    assert [r["id"] for r in ds.records] == [
+        "scene12_traj1_1/000",
+        "scene12_traj1_1/005",
+        "scene12_traj1_1/010",
+        "scene13_traj1_1/000",
+    ]

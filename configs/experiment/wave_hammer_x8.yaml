@@ -1,0 +1,29 @@
+# HAMMER, super-resolution of the REAL D435 depth: the sensor map (holes nearest-filled first) is shrunk
+# 8x by PIL bicubic and the method restores it; scored against the laser GT.
+# Input keeps the sensor's own errors, GT is independent -> honest. WAVE x8, zero-shot.
+defaults:
+  - dataset: hammer
+  - model: wave
+  - degradation: bicubic_x8
+
+seed: 0
+device: auto
+degradation:
+  fill_holes: true     # D435 has holes; see sr_downsample.py
+dataset:
+  simulate_from: sensor
+model:
+  checkpoint: checkpoints/wave/NYU8x.pth
+  scale: 8
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.1
+  max_depth: 5.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "x8 SR of real D435 depth; zero-shot; laser GT"
