@@ -174,6 +174,18 @@ Pick the columns with `--metrics absrel rmse delta1 fps`.
 A cell that could not run appears as `NOT RUN: <reason>`, never as a blank.
 "We did not run it" and "it scored badly" must not look the same in a report.
 
+## Where a method fails
+
+```bash
+uv run --group notebooks python scripts/worst_cases.py depthor_minjiang wave_minjiang_x8 -n 8 --stats
+```
+
+Ranks the frames of each experiment's latest run (`experiments/runs/<stamp>_<name>/per_sample.csv`)
+by `--by absrel|rmse|rmse_log|silog|delta1`, re-runs the model on the `-n` worst and draws
+RGB | model input | prediction | GT | signed relative error to `outputs/worst_cases/<name>/`.
+`--stats` adds rank correlations of the per-frame error with ground-truth properties (depth,
+share of far pixels, density of depth jumps).
+
 ## Training
 
 ```bash
