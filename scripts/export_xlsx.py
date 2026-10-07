@@ -132,19 +132,23 @@ DATASETS: list[dict] = [
         "stairs": False,
         "about": (
             "Комнатные сцены с несколькими датчиками (тестовые сцены HAMMER): D435 (активное стерео, тот же принцип, что "
-            "у Astra 2), L515 (dToF), эталон - лазер, независимый от датчиков. Кадры ≈1224×1024. Берётся каждый 5-й кадр "
-            "каждой траектории (≈570 из 2828: соседние кадры почти одинаковы), одинаковые кадры во всех строках листа. "
-            "Не лестницы. Используем только D435: L515 и ToF в данных есть, но мы их не запускали."
+            "у Astra 2), L515 и Lucid Helios (ToF), эталон - лазер, независимый от датчиков. Кадры ≈1224×1024. Берётся "
+            "каждый 5-й кадр каждой траектории (≈570 из 2828: соседние кадры почти одинаковы), одинаковые кадры во всех "
+            "строках листа. Не лестницы."
         ),
         "runs": [
-            f"DEPTHOR, nn_fill, local_bilateral (строки «симул. dToF»): 64 зоны строятся из глубины D435 ({DTOF}). "
-            "Настоящие дыры и тени D435 при этом теряются, остаются только 64 числа.",
-            "nn_fill и local_bilateral (строки «настоящая карта D435»): на вход идёт сама карта D435 как есть, дыры "
-            "заполняются ближайшими значениями. nn_fill - это «сам датчик»: показывает, насколько ошибается D435 "
-            "против лазера. local_bilateral калибрует Depth Anything по плотным пикселям датчика (без обучения). "
-            "DEPTHOR на такой плотной карте не запускали: его вход - 64 точки.",
-            "DuCos ×4, WAVE ×8/×16/×32 и bicubic: карта D435 (дыры заранее заполнены) уменьшается бикубикой PIL в N раз, "
-            f"метод восстанавливает исходный размер, оценка по лазеру; {SR_NOTE}. Вход несёт настоящие ошибки датчика.",
+            f"Строки «симул. dToF 8×8 из <датчика>» (DEPTHOR, nn_fill, local_bilateral): 64 зоны строятся из глубины "
+            f"этого датчика ({DTOF}). Настоящие дыры и тени датчика при этом теряются, остаются только 64 числа.",
+            "Строки «настоящая карта <датчика>» (nn_fill, local_bilateral): на вход идёт сама карта датчика как есть, дыры "
+            "заполняются ближайшими значениями. nn_fill - это «сам датчик»: насколько он ошибается против лазера. "
+            "local_bilateral калибрует Depth Anything по плотным пикселям датчика (без обучения). DEPTHOR на такой плотной "
+            "карте не запускали: его вход - 64 точки.",
+            "DuCos ×4, WAVE ×8/×16/×32 и bicubic (только D435): карта датчика (дыры заранее заполнены) уменьшается "
+            f"бикубикой PIL в N раз, метод восстанавливает исходный размер, оценка по лазеру; {SR_NOTE}.",
+            "Столбцы «в дырах» и «вне дыр»: те же метрики отдельно по пикселям, где настоящий датчик ничего не измерил "
+            "(в дырах - лазерный эталон есть, у датчика значения нет), и где измерил. Считаются по пикселям, не по кадрам. "
+            "«Дыры датчика, %» - доля таких пикселей среди оцениваемых.",
+            "Внизу листа - «разрыв доменов»: DEPTHOR на 64 зонах из D435, L515 и ToF на одних и тех же сценах.",
         ],
     },
     {
@@ -218,6 +222,17 @@ METRICS = [
     ("FPS ↑", "fps", "0.0"),
     ("Задержка, мс ↓", "latency_ms_median", "0.0"),
 ]
+# only on sheets whose rows carry them (eval.regions: sensor_holes): the same metrics split by
+# where the REAL sensor had no measurement
+REGION_METRICS = [
+    ("Дыры датчика, % пикселей", "holes_frac", "0.0%"),
+    ("AbsRel в дырах ↓", "holes_absrel", "0.0000"),
+    ("RMSE в дырах ↓", "holes_rmse", "0.0000"),
+    ("δ1 в дырах ↑", "holes_delta1", "0.0000"),
+    ("AbsRel вне дыр ↓", "valid_absrel", "0.0000"),
+    ("RMSE вне дыр ↓", "valid_rmse", "0.0000"),
+    ("δ1 вне дыр ↑", "valid_delta1", "0.0000"),
+]
 PAPER_COLS = ("RMSE по статье", "× к ед. статьи", "Наш RMSE в ед. статьи", "Откл., %")
 HEAD = (
     ["Эксперимент", "Вход (протокол)", "Метод", "Кадров"]
@@ -261,18 +276,30 @@ def latest_per_experiment(rows: list[dict[str, str]]) -> dict[str, dict[str, str
     return out
 
 
+def hammer_sensor(exp: str) -> str:
+    """Which HAMMER stream an experiment reads: the name carries it, D435 by default."""
+    m = re.search(r"_(l515|tof)(?:_|$)", exp)
+    return {"l515": "L515", "tof": "ToF"}[m.group(1)] if m else "D435"
+
+
 def protocol(exp: str, r: dict[str, str]) -> tuple[int, str]:
     """(sort rank, label): the input the method was given."""
     ds, deg = r["dataset"], r["degradation"]
     if deg == "dtof_sim":
-        src = "датчика" if ds in ("hammer", "arkitscenes") else "эталона"
+        src = (
+            hammer_sensor(exp)
+            if ds == "hammer"
+            else "датчика"
+            if ds == "arkitscenes"
+            else "эталона"
+        )
         return 0, f"симул. dToF 8×8 из {src}"
     m = re.search(r"_x(\d+)$", exp)
     if m:
         src = "карты D435" if ds == "hammer" else "эталона"
         return int(m.group(1)), f"bicubic ×{m.group(1)} из {src}"
     if ds == "hammer":
-        return 0, "настоящая карта D435 (с дырами)"
+        return 0, f"настоящая карта {hammer_sensor(exp)} (с дырами)"
     if ds == "void_stairs":
         return 0, "~740 точек VIO"
     if ds == "arkitscenes":
@@ -284,9 +311,10 @@ def protocol(exp: str, r: dict[str, str]) -> tuple[int, str]:
 
 def num(v: str):
     try:
-        return float(v)
+        x = float(v)
     except (TypeError, ValueError):
         return None
+    return x if math.isfinite(x) else None
 
 
 def add_text(
@@ -308,28 +336,11 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list
     wb = Workbook()
     wb.remove(wb.active)
     thin = Side(style="thin", color="999999")
-    head_cols = len(HEAD)
 
     for d in DATASETS:
         ws = wb.create_sheet(d["sheet"])
         if d["stairs"]:
             ws.sheet_properties.tabColor = "ED7D31"
-        title = f"{d['sheet']}: лестницы" if d["stairs"] else d["sheet"]
-        r_i = add_text(ws, 1, title, head_cols, bold=True, size=13)
-        r_i = add_text(ws, r_i, "Что это. " + d["about"], head_cols)
-        r_i = add_text(ws, r_i, "Как запускали методы:", head_cols, bold=True)
-        for line in d["runs"]:
-            r_i = add_text(ws, r_i, "• " + line, head_cols)
-        r_i = add_text(ws, r_i, LEGEND, head_cols, size=9, italic=True)
-        head_row = r_i + 1
-
-        for j, h in enumerate(HEAD, 1):
-            c = ws.cell(head_row, j, h)
-            c.font = Font(name=FONT, bold=True, size=10)
-            c.fill = PatternFill("solid", fgColor="D9D9D9")
-            c.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
-            c.border = Border(bottom=Side(style="medium"))
-        col = {h: j for j, h in enumerate(HEAD, 1)}
 
         items = []
         for exp, r in picked.items():
@@ -339,21 +350,47 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list
             items.append((rank, label, r["method"] not in NEURAL, r["method"], exp, r))
         items.sort(key=lambda t: t[:5])
 
+        regions = any(num(r.get("holes_rmse", "")) is not None for *_, r in items)
+        head = list(HEAD)
+        if regions:
+            at = head.index(PAPER_COLS[0])
+            head[at:at] = [m[0] for m in REGION_METRICS]
+        head_cols = len(head)
+
+        title = f"{d['sheet']}: лестницы" if d["stairs"] else d["sheet"]
+        r_i = add_text(ws, 1, title, head_cols, bold=True, size=13)
+        r_i = add_text(ws, r_i, "Что это. " + d["about"], head_cols)
+        r_i = add_text(ws, r_i, "Как запускали методы:", head_cols, bold=True)
+        for line in d["runs"]:
+            r_i = add_text(ws, r_i, "• " + line, head_cols)
+        r_i = add_text(ws, r_i, LEGEND, head_cols, size=9, italic=True)
+        head_row = r_i + 1
+
+        for j, h in enumerate(head, 1):
+            c = ws.cell(head_row, j, h)
+            c.font = Font(name=FONT, bold=True, size=10)
+            c.fill = PatternFill("solid", fgColor="D9D9D9")
+            c.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+            c.border = Border(bottom=Side(style="medium"))
+        col = {h: j for j, h in enumerate(head, 1)}
+
         prev_label, row_i = None, head_row + 1
+        at_row: dict[str, int] = {}  # experiment -> sheet row, for the domain-gap block
         for _, label, floor, method, exp, r in items:
+            at_row[exp] = row_i
             fill = None if floor else PatternFill("solid", fgColor="DDEBF7")
-            vals = [
-                exp,
-                label,
-                SHOWN[method],
-                num(r["n_samples"]),
-            ]
+            vals = [exp, label, SHOWN[method], num(r["n_samples"])]
             vals += [num(r[m[1]]) for m in METRICS]
+            if regions:
+                vals += [num(r.get(m[1], "")) for m in REGION_METRICS]
             for j, v in enumerate(vals, 1):
                 c = ws.cell(row_i, j, v)
                 c.font = Font(name=FONT, size=10, bold=(not floor) and j in (1, 3))
             for name, _, fmt in METRICS:
                 ws.cell(row_i, col[name]).number_format = fmt
+            if regions:
+                for name, _, fmt in REGION_METRICS:
+                    ws.cell(row_i, col[name]).number_format = fmt
             ws.cell(row_i, col["Кадров"]).number_format = "#,##0"
 
             paper = PAPER.get(exp)
@@ -400,8 +437,70 @@ def build(rows: list[dict[str, str]], configs: set[str]) -> tuple[Workbook, list
             f"A{head_row}:{get_column_letter(head_cols)}{max(row_i - 1, head_row + 1)}"
         )
 
+        if d["key"] == "hammer":
+            domain_gap_block(ws, picked, row_i + 2)
+
     missing = sorted(e for e in configs if re.search(INCLUDE, e) and e not in latest)
     return wb, missing
+
+
+GAP_ROWS = (
+    ("D435 (активное стерео)", "depthor_hammer_dtof", "nn_fill_hammer_d435"),
+    ("L515", "depthor_hammer_l515_dtof", "nn_fill_hammer_l515"),
+    ("Lucid Helios (I-ToF)", "depthor_hammer_tof_dtof", "nn_fill_hammer_tof"),
+)
+
+
+def domain_gap_block(ws, picked: dict[str, dict[str, str]], top: int) -> None:
+    """DEPTHOR fed 64 zones from each HAMMER sensor, same scenes and laser GT.
+
+    The gap is the change against the D435 row (the sensor closest to Astra 2).  Raw
+    sensor columns say how wrong each sensor is before any model touches it.
+    """
+    if not any(e in picked for _, e, _ in GAP_ROWS):
+        return
+    heads = [
+        "Разрыв доменов: DEPTHOR на 64 зонах разных датчиков",
+        "AbsRel ↓",
+        "RMSE, м ↓",
+        "δ1 ↑",
+        "AbsRel к D435, %",
+        "RMSE к D435, %",
+        "Сам датчик: AbsRel ↓",
+        "Сам датчик: RMSE, м ↓",
+    ]
+    for j, h in enumerate(heads, 1):
+        c = ws.cell(top, j, h)
+        c.font = Font(name=FONT, bold=True, size=10)
+        c.fill = PatternFill("solid", fgColor="D9D9D9")
+        c.alignment = Alignment(wrap_text=True, vertical="center")
+    ws.row_dimensions[top].height = 42
+    ref = top + 1  # the D435 row
+    for k, (name, depthor, raw) in enumerate(GAP_ROWS):
+        r_i = top + 1 + k
+        a, b = picked.get(depthor), picked.get(raw)
+        vals = [
+            name,
+            num(a["absrel"]) if a else None,
+            num(a["rmse"]) if a else None,
+            num(a["delta1"]) if a else None,
+        ]
+        for j, v in enumerate(vals, 1):
+            ws.cell(r_i, j, v).font = Font(name=FONT, size=10)
+        if a and k:
+            ws.cell(r_i, 5, f"=(B{r_i}-B${ref})/B${ref}").number_format = "0.0%"
+            ws.cell(r_i, 6, f"=(C{r_i}-C${ref})/C${ref}").number_format = "0.0%"
+        ws.cell(r_i, 7, num(b["absrel"]) if b else None)
+        ws.cell(r_i, 8, num(b["rmse"]) if b else None)
+        for j in (2, 3, 4, 7, 8):
+            ws.cell(r_i, j).number_format = "0.0000"
+        for j in range(5, 9):
+            ws.cell(r_i, j).font = Font(name=FONT, size=10)
+    note = (
+        "Одни и те же сцены и лазерный эталон; меняется только датчик, из которого строятся 64 зоны. "
+        "Разрыв - изменение ошибки относительно D435; D435 ближе всего к Astra 2."
+    )
+    ws.cell(top + 1 + len(GAP_ROWS), 1, note).font = Font(name=FONT, size=9, italic=True)
 
 
 def main() -> int:

@@ -1,0 +1,24 @@
+# The L515 (dToF-class sensor) depth itself, holes nearest-filled: how wrong the sensor is against the laser.
+# Domain gap (SOW): same scenes, same laser GT, same floor, input from the L515 (dToF-class sensor) instead of the D435 (the D435 versions are *_hammer_dtof / *_hammer_d435).
+defaults:
+  - dataset: hammer
+  - model: nn_fill
+  - degradation: none
+
+seed: 0
+device: auto
+dataset:
+  input_subdir: polarization/depth_l515
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.1
+  max_depth: 5.0
+  regions: sensor_holes   # metrics also split by the real sensor's holes
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "raw l515 depth with holes nearest-filled; laser GT"

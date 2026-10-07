@@ -29,6 +29,18 @@ __all__ = ["RESULTS_DIR", "SUMMARY_CSV", "RunRecorder", "collect_env", "write_ma
 RESULTS_DIR = REPO_ROOT / "experiments" / "results"
 SUMMARY_CSV = RESULTS_DIR / "benchmark.csv"
 
+#: Metrics split by where the REAL sensor had no measurement (eval.regions: sensor_holes).
+#: Empty for runs that do not ask for it.
+REGION_COLUMNS: tuple[str, ...] = (
+    "holes_frac",
+    "holes_absrel",
+    "holes_rmse",
+    "holes_delta1",
+    "valid_absrel",
+    "valid_rmse",
+    "valid_delta1",
+)
+
 SUMMARY_COLUMNS: tuple[str, ...] = (
     "timestamp",
     "experiment",
@@ -45,6 +57,7 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     *METRIC_NAMES,
     "fps",
     "latency_ms_median",
+    *REGION_COLUMNS,
     "git_commit",
     "metric_config",
     "config_hash",
@@ -53,9 +66,11 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
 
 #: Earlier headers of benchmark.csv, newest first, so migrate_summary_header can
 #: place a row of any past width. Add one here whenever SUMMARY_COLUMNS grows.
+_BASE = tuple(c for c in SUMMARY_COLUMNS if c not in REGION_COLUMNS)
 _PAST_COLUMNS: tuple[tuple[str, ...], ...] = (
-    tuple(c for c in SUMMARY_COLUMNS if c != "config_hash"),
-    tuple(c for c in SUMMARY_COLUMNS if c not in ("config_hash", "n_unreadable")),
+    _BASE,
+    tuple(c for c in _BASE if c != "config_hash"),
+    tuple(c for c in _BASE if c not in ("config_hash", "n_unreadable")),
 )
 
 

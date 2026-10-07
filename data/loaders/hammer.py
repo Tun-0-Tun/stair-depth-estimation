@@ -93,6 +93,7 @@ class HammerDataset(BaseDepthDataset):
         seq_dirs = [p for p in seq_dirs if self._wanted_scene(p)]
 
         records: list[dict[str, Any]] = []
+        no_input = 0
         for seq in seq_dirs:
             # per trajectory, so every one stays represented (frames of a trajectory are
             # near-duplicates; a global stride would still sample all of them)
@@ -100,6 +101,13 @@ class HammerDataset(BaseDepthDataset):
                 gt = seq / self.gt_subdir / rgb.name
                 inp = seq / self.input_subdir / rgb.name
                 if not gt.exists():
+                    continue
+                if not inp.exists() and (
+                    self.simulate_from == "sensor" or self.degradation is None
+                ):
+                    no_input += (
+                        1  # this run needs the sensor stream: a frame without it cannot be scored
+                    )
                     continue
                 records.append(
                     {
@@ -111,6 +119,8 @@ class HammerDataset(BaseDepthDataset):
                     }
                 )
 
+        if no_input:
+            print(f"[hammer] left out {no_input} frames that have no {self.input_subdir} stream")
         if not records and self.strict:
             found = sorted({p.name for p in self.root.rglob("*") if p.is_dir()})[:25]
             raise FileNotFoundError(

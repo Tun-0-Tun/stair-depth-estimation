@@ -186,6 +186,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # ---- evaluate ---------------------------------------------------------
     acc = DepthMetricAccumulator(metric_cfg, pooling=str(eval_cfg.get("pooling", "image")))
+    # eval.regions: sensor_holes -> the same metrics again, only on pixels where the real
+    # sensor had no measurement ("holes") and only where it had ("valid"). Pooled per pixel:
+    # per-image averages of a few hundred hole pixels would be noise.
+    by_region = eval_cfg.get("regions") == "sensor_holes"
+    acc_holes = DepthMetricAccumulator(metric_cfg, pooling="pixel")
+    acc_valid = DepthMetricAccumulator(metric_cfg, pooling="pixel")
     unreadable: list[str] = []
     for i in range(len(dataset)):
         try:
@@ -203,6 +209,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             continue
         pred = model.predict_sample(sample)
         acc.update(pred, sample["gt_depth"], sample["mask"], sample["meta"]["sample_id"])
+        if by_region:
+            if "sensor_mask" not in sample:
+                raise SystemExit(
+                    "eval.regions=sensor_holes needs a dataset with a native sensor input "
+                    "(sample has no 'sensor_mask')"
+                )
+            hole = ~sample["sensor_mask"]
+            acc_holes.update(pred, sample["gt_depth"], sample["mask"] & hole)
+            acc_valid.update(pred, sample["gt_depth"], sample["mask"] & ~hole)
         if (i + 1) % 50 == 0 or i + 1 == len(dataset):
             print(f"  [{i + 1}/{len(dataset)}] {format_metrics(acc.compute())}")
 
@@ -216,6 +231,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     summary: dict[str, Any] = acc.compute()
     summary["n_unreadable"] = len(unreadable)
+    if by_region:
+        n_h = sum(r["n_valid"] for r in acc_holes.per_sample)
+        n_v = sum(r["n_valid"] for r in acc_valid.per_sample)
+        summary["holes_frac"] = n_h / max(n_h + n_v, 1)
+        for tag, a in (("holes", acc_holes), ("valid", acc_valid)):
+            m = a.compute()
+            for k in ("absrel", "rmse", "delta1"):
+                summary[f"{tag}_{k}"] = m[k]
+        print(
+            f"[regions] holes {summary['holes_frac']:.1%} of scored pixels: "
+            f"rmse {summary['holes_rmse']:.4f} (valid {summary['valid_rmse']:.4f}), "
+            f"absrel {summary['holes_absrel']:.4f} (valid {summary['valid_absrel']:.4f})"
+        )
 
     # ---- runtime ----------------------------------------------------------
     if cfg.get("runtime", {}).get("measure", True) and len(dataset):

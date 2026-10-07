@@ -653,3 +653,28 @@ def test_hammer_frame_stride_is_per_trajectory(tmp_path):
         "scene12_traj1_1/010",
         "scene13_traj1_1/000",
     ]
+
+
+def test_sensor_mask_survives_simulate_from_sensor(tmp_path):
+    """The hole split is scored against where the REAL sensor had no measurement, even when
+    the model is fed zones simulated from that sensor (which replace the input)."""
+    Image = pytest.importorskip("PIL.Image")
+
+    seq = tmp_path / "scene12_traj1_1"
+    for d in ("rgb", "gt", "d435"):
+        (seq / d).mkdir(parents=True)
+    Image.fromarray(np.zeros((16, 16, 3), np.uint8)).save(seq / "rgb" / "000.png")
+    Image.fromarray(np.full((16, 16), 2000, np.uint16)).save(seq / "gt" / "000.png")
+    d435 = np.full((16, 16), 2000, np.uint16)
+    d435[:4] = 0  # a band of holes
+    Image.fromarray(d435).save(seq / "d435" / "000.png")
+
+    deg = build_degradation(dict(load_config("degradation", "dtof_l5_center")))
+    s = build_dataset(
+        {"loader": "hammer", "root": str(tmp_path), "simulate_from": "sensor"}, degradation=deg
+    )[0]
+    assert s["sensor_mask"].dtype == bool and s["sensor_mask"].shape == (16, 16)
+    assert not s["sensor_mask"][:4].any() and s["sensor_mask"][4:].all()
+    assert (s["sparse_depth"] > 0).sum() <= 64, (
+        "the model input is the 64 zones, not the sensor map"
+    )

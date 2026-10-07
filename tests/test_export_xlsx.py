@@ -107,3 +107,85 @@ def test_each_dataset_sheet_lists_every_method_on_it(tmp_path):
         == f"={head['RMSE ↓']}{r}*{head['× к ед. статьи']}{r}"
     )
     assert ws[f"{head['RMSE по статье']}{r}"].value == 1.45
+
+
+def test_hammer_sheet_gets_region_columns_and_nan_becomes_an_empty_cell(tmp_path):
+    rows = [
+        _row(
+            "20261006-000000",
+            "depthor_hammer_dtof",
+            "hammer",
+            "depthor",
+            0.0548,
+            degradation="dtof_sim",
+            holes_frac="0.12",
+            holes_absrel="0.2",
+            holes_rmse="0.30",
+            holes_delta1="0.5",
+            valid_absrel="0.04",
+            valid_rmse="0.05",
+            valid_delta1="0.99",
+        ),
+        _row(
+            "20261006-000001",
+            "depthor_hammer_l515_dtof",
+            "hammer",
+            "depthor",
+            0.0600,
+            degradation="dtof_sim",
+            holes_frac="0.0",
+            holes_absrel="nan",
+            holes_rmse="nan",
+            holes_delta1="nan",
+            valid_absrel="0.05",
+            valid_rmse="0.06",
+            valid_delta1="0.98",
+        ),
+        _row(
+            "20261006-000002",
+            "depthor_hammer_tof_dtof",
+            "hammer",
+            "depthor",
+            0.0700,
+            degradation="dtof_sim",
+        ),
+        _row("20261005-000000", "depthor_zju_l5", "zju_l5", "depthor", 0.3501),
+    ]
+    path = tmp_path / "benchmark.csv"
+    with path.open("w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(SUMMARY_COLUMNS))
+        w.writeheader()
+        w.writerows(rows)
+    wb, _ = build(load_rows(path), set())
+
+    def header(ws):
+        return next(c for c in ws.iter_rows() if c[0].value == HEAD[0])
+
+    hm = {c.value: c.column for c in header(wb["HAMMER"])}
+    assert "RMSE в дырах ↓" in hm, "HAMMER rows carry region metrics"
+    assert "RMSE в дырах ↓" not in {c.value for c in header(wb["ZJU-L5"])}, (
+        "other sheets stay as before"
+    )
+
+    ws = wb["HAMMER"]
+    first = header(ws)[0].row + 1
+    by_exp = {ws.cell(r, 1).value: r for r in range(first, first + 3)}
+    assert ws.cell(by_exp["depthor_hammer_dtof"], hm["RMSE в дырах ↓"]).value == 0.30
+    assert ws.cell(by_exp["depthor_hammer_l515_dtof"], hm["RMSE в дырах ↓"]).value is None, (
+        "NaN -> empty"
+    )
+    labels = {ws.cell(r, 2).value for r in by_exp.values()}
+    assert {
+        "симул. dToF 8×8 из D435",
+        "симул. dToF 8×8 из L515",
+        "симул. dToF 8×8 из ToF",
+    } <= labels
+
+    gap = next(
+        r
+        for r in range(first, ws.max_row + 1)
+        if str(ws.cell(r, 1).value).startswith("Разрыв доменов")
+    )
+    assert ws.cell(gap + 2, 5).value == f"=(B{gap + 2}-B${gap + 1})/B${gap + 1}", (
+        "L515 row compares with D435"
+    )

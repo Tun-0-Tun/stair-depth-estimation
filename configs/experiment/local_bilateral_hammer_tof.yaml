@@ -1,0 +1,24 @@
+# Depth Anything V2 calibrated on the dense Lucid Helios (I-ToF) pixels.
+# Domain gap (SOW): same scenes, same laser GT, same local_bilateral, input from the Lucid Helios (I-ToF) instead of the D435 (the D435 versions are *_hammer_dtof / *_hammer_d435).
+defaults:
+  - dataset: hammer
+  - model: local_bilateral
+  - degradation: none
+
+seed: 0
+device: auto
+dataset:
+  input_subdir: polarization/depth_tof
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.1
+  max_depth: 5.0
+  regions: sensor_holes   # metrics also split by the real sensor's holes
+runtime:
+  measure: true
+  warmup: 3
+  iters: 10
+tracking:
+  backend: none
+notes: "DAv2 + dense tof anchors, no task training; laser GT"
