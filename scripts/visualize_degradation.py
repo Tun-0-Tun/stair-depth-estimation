@@ -83,7 +83,10 @@ def load_samples(
         )
     elif deg is not None:
         # the loader drops the degradation's meta, so ask the model directly
-        probe = deg(np.ones((4, 4), dtype=np.float32), seed=0)["meta"]
+        probe_kw = {}
+        if getattr(deg, "uses_normals", False):
+            probe_kw["normal"] = np.broadcast_to(np.float32([0, 0, 1]), (4, 4, 3))
+        probe = deg(np.ones((4, 4), dtype=np.float32), seed=0, **probe_kw)["meta"]
         uncalibrated = probe.get("calibrated") is False
     return [ds[i] for i in range(len(ds))], uncalibrated
 

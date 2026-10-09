@@ -31,7 +31,7 @@ from __future__ import annotations
 import abc
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -63,12 +63,23 @@ class BaseDegradation(abc.ABC):
 
     key: str = "base"
 
-    def __call__(self, gt_depth: np.ndarray, seed: int | None = None) -> dict[str, Any]:
+    uses_normals: ClassVar[bool] = False
+    """Subclasses that need a normal map set this; ``apply`` then gets ``normal=``."""
+
+    def __call__(
+        self,
+        gt_depth: np.ndarray,
+        seed: int | None = None,
+        normal: np.ndarray | None = None,
+    ) -> dict[str, Any]:
         gt = np.asarray(gt_depth, dtype=np.float32)
         if gt.ndim != 2:
             raise ValueError(f"gt_depth must be (H, W), got {gt.shape}")
         rng = np.random.default_rng(seed)
-        out = dict(self.apply(gt, rng))
+        if self.uses_normals:
+            out = dict(self.apply(gt, rng, normal=normal))
+        else:
+            out = dict(self.apply(gt, rng))
         sparse = np.asarray(out.get("sparse_depth"), dtype=np.float32)
         sparse = np.nan_to_num(sparse, nan=0.0, posinf=0.0, neginf=0.0)
         sparse[sparse < 0] = 0.0
