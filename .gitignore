@@ -5,6 +5,7 @@ data/raw/
 data/processed/
 data/cache/
 datasets/
+subdatasets/
 checkpoints/
 *.pth
 *.pth.tar

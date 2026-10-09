@@ -307,7 +307,17 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
                     f"[{self.info.name}] sample {idx} has no degraded input and no degradation "
                     "model was configured."
                 )
-            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx)
+            deg_kwargs: dict[str, Any] = {}
+            if getattr(self.degradation, "uses_normals", False):
+                normal = raw.get("normal")
+                if normal is None:
+                    raise ValueError(
+                        f"[{self.info.name}] degradation {self.degradation.key!r} needs a normal "
+                        "map, but this dataset sample has none (Hypersim: needs the "
+                        "normal_cam.hdf5 files next to the depth)."
+                    )
+                deg_kwargs["normal"] = normal
+            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx, **deg_kwargs)
             sparse = deg["sparse_depth"]
             lr = deg.get("lr_depth")
             modality = "synthetic"
