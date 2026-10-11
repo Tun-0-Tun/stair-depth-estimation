@@ -107,9 +107,10 @@ class HyperSimDataset(BaseDepthDataset):
         self.scenes = list(scenes) if scenes else None
         self.frame_stride = max(1, int(frame_stride))
         # a degradation that consumes normals (e.g. axial_noise) switches loading on itself
-        self.load_normals = bool(load_normals) or bool(
-            getattr(kwargs.get("degradation"), "uses_normals", False)
-        )
+        # not needed when the estimator replaces them anyway (force_normals)
+        self.load_normals = (
+            bool(load_normals) or bool(getattr(kwargs.get("degradation"), "uses_normals", False))
+        ) and not kwargs.get("force_normals", False)
         self._intrinsics: dict[str, np.ndarray] | None = None
         self._scale_cache: dict[tuple[str, int, int], np.ndarray] = {}
         super().__init__(root=root, split=split, **kwargs)

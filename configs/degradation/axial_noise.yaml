@@ -1,16 +1,17 @@
 # Axial noise from a known normal map (Nguyen et al. 2012, Kinect values) - NOT CALIBRATED
 # for the Astra 2. Any result produced with this file must carry "uncalibrated" in the notes column.
-# Needs a normal map: only datasets that provide one (e.g. hypersim with load_normals) can use it.
+# Needs a normal map: the dataset provides one (e.g. hypersim normal_cam), or pass --normals <preset>
+# (configs/normals) to estimate it from GT depth; --force-normals estimates even if provided.
 type: axial_noise
 sigma_floor_m: 0.0012       # std at reference depth, metres
 sigma_depth_gain: 0.0019    # coefficient of (D - reference_depth_m)^2
 reference_depth_m: 0.4
-sigma_grazing_gain: 0.0001  # grazing-angle term
+sigma_grazing_gain: 0.00005  # grazing-angle term
 grazing_start_deg: 60.0
-theta_max_deg: 89.0
+theta_max_deg: 80.0
 sigma_max_m: 0.1
-z_min: 0.6
-z_max: 8.0
+z_min: null          # metres; null = no lower limit (Astra 2 datasheet: 0.6)
+z_max: null          # metres; null = no upper limit (Astra 2 datasheet: 8.0)
 normal_resize_mode: nearest # nearest | bilinear
 angle_reference: optical_axis  # optical_axis | viewing_ray
 fill_missing_theta: true

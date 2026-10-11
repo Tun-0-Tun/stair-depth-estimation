@@ -268,6 +268,9 @@ def test_astra2_degradation_produces_structured_not_random_holes():
 
 
 def _shadow(gt, **params):
+    # fov_clip=False: these tests probe occlusion geometry only, not the image border
+    # (with the default fov_clip=True the pixels shifted out of the projector view are holes)
+    params.setdefault("fov_clip", False)
     deg = build_degradation({"type": "projector_shadow", **params})
     out = deg(gt.astype(np.float32), seed=0)
     return (out["sparse_depth"] == 0) & (gt > 0), out["meta"]

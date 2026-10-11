@@ -12,8 +12,11 @@ data below 10 deg; the first formula is used there.  The grazing term is
 singular at 90 deg, so ``phi`` is clamped at ``theta_max_deg`` and ``sigma`` is
 capped at ``sigma_max_m``.
 
-The model needs the normal map as an input (``normal=`` of ``__call__``); there
-is deliberately no silent fallback that estimates normals from noisy depth.
+The normal map is resolved by ``BaseDegradation.__call__``: the dataset's (e.g.
+Hypersim's ``normal_cam``), else estimated from the **clean** GT depth with
+``data.norm`` (``--normals`` / ``--force-normals``).  Estimators zero normals across
+depth jumps -- the stair nosings -- so those pixels take the nearest valid angle;
+native normals do not have that limitation.
 
 Defaults are the Kinect values from the paper -- **uncalibrated** for the Astra 2.
 """
@@ -57,10 +60,12 @@ class AxialDegradation(BaseDegradation):
     """Upper cap on the std in metres, for grazing pixels."""
 
     # --- operating range --------------------------------------------------
-    z_min: float = 0.6
-    """GT closer than this (and noisy depth closer than this) is invalid, metres."""
-    z_max: float = 8.0
-    """GT farther than this (and noisy depth farther than this) is invalid, metres."""
+    z_min: float | None = 0.6
+    """GT closer than this (and noisy depth closer than this) is invalid, metres;
+    None = no lower limit."""
+    z_max: float | None = 8.0
+    """GT farther than this (and noisy depth farther than this) is invalid, metres;
+    None = no upper limit."""
 
     # --- normal-map handling ----------------------------------------------
     normal_resize_mode: str = "nearest"
@@ -83,14 +88,18 @@ class AxialDegradation(BaseDegradation):
     """Principal point y in pixels; ``None`` means the image centre."""
 
     def apply(
-        self, gt: np.ndarray, rng: np.random.Generator, normal: np.ndarray | None = None
+        self, gt: np.ndarray, normal: np.ndarray, rng: np.random.Generator
     ) -> Mapping[str, Any]:
-        if normal is None:
-            raise ValueError("AxialDegradation needs a normal map: pass normal=(H, W, 3)")
+        # Set depth map
         z = gt.astype(np.float64)
-        valid = np.isfinite(z) & (z >= self.z_min) & (z <= self.z_max)
+        valid = np.isfinite(z) & (z > 0)
+        if self.z_min is not None:
+            valid &= z >= self.z_min
+        if self.z_max is not None:
+            valid &= z <= self.z_max
         z = np.where(valid, z, 0.0)
 
+        # Set normal map
         theta = get_theta_map(
             normal,
             z.shape,
@@ -106,6 +115,7 @@ class AxialDegradation(BaseDegradation):
             theta = _fill_nearest(theta, target=valid)
         theta = np.nan_to_num(theta, nan=0.0)
 
+        # Get noiesd map
         noisy = apply_axial_noise(
             z,
             theta,
@@ -118,12 +128,14 @@ class AxialDegradation(BaseDegradation):
             theta_max_deg=self.theta_max_deg,
             sigma_max_m=self.sigma_max_m,
         )
-        noisy[(noisy < self.z_min) | (noisy > self.z_max)] = 0.0
+        if self.z_min is not None:
+            noisy[noisy < self.z_min] = 0.0
+        if self.z_max is not None:
+            noisy[noisy > self.z_max] = 0.0
         return {
             "sparse_depth": noisy,
             "lr_depth": None,  # full-resolution sensor
             "meta": {
-                "normal_source": "provided",
                 "theta_missing_ratio": theta_missing,
                 "valid_ratio": float((noisy > 0).mean()),
                 "calibrated": False,
@@ -213,7 +225,8 @@ def apply_axial_noise(
     sigma = np.minimum(sigma, sigma_max_m)
 
     noise = rng.normal(0.0, 1.0, size=z.shape) * sigma
-    return np.where(valid, z + noise, 0.0).astype(np.float32)
+    z_noised = np.where(valid, z + noise, 0.0).astype(np.float32)
+    return z_noised
 
 
 def _fill_nearest(values: np.ndarray, target: np.ndarray) -> np.ndarray:
