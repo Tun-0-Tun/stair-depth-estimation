@@ -26,6 +26,7 @@ from typing import Any
 
 import _bootstrap
 import numpy as np
+from _normals_cli import add_normals_args, build_normals, load_normals_cfg
 
 from utils.misc import resize_depth
 
@@ -45,6 +46,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="apply --degradation to GT even if the dataset ships a real sensor input",
     )
+    add_normals_args(p, default="gt_cross")
     p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
     p.add_argument(
         "--input",
@@ -58,7 +60,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def load_samples(
-    dataset: str, degradation: str | None, n: int, force: bool = False
+    dataset: str,
+    degradation: str | None,
+    n: int,
+    force: bool = False,
+    normals: str | None = None,
+    force_normals: bool = False,
 ) -> tuple[list[dict], bool]:
     """Return the first ``n`` samples and whether their input is uncalibrated."""
     from data.degradation import build_degradation
@@ -73,6 +80,8 @@ def load_samples(
         degradation=deg,
         max_samples=n,
         force_degradation=force,
+        normals=build_normals(load_normals_cfg(normals)) if normals else None,
+        force_normals=force_normals,
     )
 
     uncalibrated = False
@@ -83,10 +92,9 @@ def load_samples(
         )
     elif deg is not None:
         # the loader drops the degradation's meta, so ask the model directly
-        probe_kw = {}
-        if getattr(deg, "uses_normals", False):
-            probe_kw["normal"] = np.broadcast_to(np.float32([0, 0, 1]), (4, 4, 3))
-        probe = deg(np.ones((4, 4), dtype=np.float32), seed=0, **probe_kw)["meta"]
+        # (a dummy normal: only the "calibrated" flag is read, not the result)
+        dummy = np.broadcast_to(np.float32([0, 0, 1]), (4, 4, 3))
+        probe = deg(np.ones((4, 4), dtype=np.float32), seed=0, normal=dummy)["meta"]
         uncalibrated = probe.get("calibrated") is False
     return [ds[i] for i in range(len(ds))], uncalibrated
 
@@ -175,7 +183,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         samples, uncalibrated = load_samples(
-            args.dataset, args.degradation, args.n, force=args.force_degradation
+            args.dataset,
+            args.degradation,
+            args.n,
+            force=args.force_degradation,
+            normals=args.normals,
+            force_normals=args.force_normals,
         )
     except (FileNotFoundError, RuntimeError, ValueError, KeyError) as e:
         # the loaders' messages already say what to fix (missing data, no --degradation)

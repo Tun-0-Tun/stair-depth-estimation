@@ -10,6 +10,7 @@ from data.degradation.base import (
     register_degradation,
 )
 from data.degradation.dtof_sim import DToFSimDegradation
+from data.degradation.lateral import LateralDegradation
 from data.degradation.projector_shadow import ProjectorShadowDegradation
 from data.degradation.sr_downsample import BicubicSRDegradation, RandomSparseDegradation
 
@@ -21,6 +22,7 @@ __all__ = [
     "BicubicSRDegradation",
     "DToFSimDegradation",
     "IdentityDegradation",
+    "LateralDegradation",
     "ProjectorShadowDegradation",
     "RandomSparseDegradation",
     "build_degradation",

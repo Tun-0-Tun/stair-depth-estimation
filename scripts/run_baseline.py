@@ -32,6 +32,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import _bootstrap  # noqa: F401  (must come first: puts the repo root on sys.path)
+from _normals_cli import add_normals_args, build_normals, load_normals_cfg
 
 from baselines.base import BASELINE_REGISTRY, build_baseline, model_depth_range
 from data.degradation import build_degradation
@@ -65,6 +66,8 @@ def config_hash(cfg: Config) -> str:
 
     d = cfg.to_dict()
     blob = {k: clean(d.get(k)) for k in ("dataset", "degradation", "model", "eval", "seed")}
+    # normals only matter for degradations that use them; absent keys keep old hashes
+    blob.update({k: clean(d[k]) for k in ("normals", "force_normals") if d.get(k)})
     return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
@@ -75,6 +78,7 @@ def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--model", help="model config name (configs/model/*.yaml)")
     p.add_argument("--dataset", help="dataset config name (configs/dataset/*.yaml)")
     p.add_argument("--degradation", help="degradation config name (configs/degradation/*.yaml)")
+    add_normals_args(p)
     p.add_argument("--experiment", help="experiment config name (configs/experiment/*.yaml)")
     p.add_argument("--limit", type=int, help="evaluate at most N samples")
     p.add_argument("--device", help="cpu | cuda | mps | auto")
@@ -126,6 +130,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args, overrides = parse_args(list(sys.argv[1:] if argv is None else argv))
     cfg = compose(args, overrides)
 
+    # normals live in the config (rule: one experiment = one YAML), so they enter the hash
+    if args.normals:
+        cfg.normals = load_normals_cfg(args.normals)
+    if args.force_normals:
+        cfg.force_normals = True
     if args.device:
         cfg.device = args.device
     if args.limit is not None:
@@ -173,6 +182,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     dataset = build_dataset(
         dataset_cfg,
         degradation=degradation,
+        normals=build_normals(dict(cfg.normals)) if cfg.get("normals") else None,
+        force_normals=bool(cfg.get("force_normals")),
         **({"max_samples": eval_cfg["max_samples"]} if eval_cfg.get("max_samples") else {}),
     )
     print(f"[data] {dataset.info.name}: {len(dataset)} samples, modality={dataset.info.modality}")

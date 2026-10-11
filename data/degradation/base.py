@@ -69,17 +69,39 @@ class BaseDegradation(abc.ABC):
     def __call__(
         self,
         gt_depth: np.ndarray,
-        seed: int | None = None,
         normal: np.ndarray | None = None,
+        seed: int | None = None,
+        *,
+        normal_estimator: Any = None,
+        force_normals: bool = False,
     ) -> dict[str, Any]:
+        """Degrade ``gt_depth``.
+
+        For degradations with ``uses_normals`` the normal map is resolved here, once:
+        the dataset's ``normal`` (H, W, 3) is used if given; otherwise it is computed from
+        ``gt_depth`` with ``normal_estimator`` (a ``data.norm`` method); with
+        ``force_normals`` the estimator is used even if ``normal`` is given.  The map
+        used is returned as ``out["normals"]``.  Other degradations ignore all three.
+        """
+        # Set ground trueth depth
         gt = np.asarray(gt_depth, dtype=np.float32)
         if gt.ndim != 2:
             raise ValueError(f"gt_depth must be (H, W), got {gt.shape}")
+
+        # Set randomizer
         rng = np.random.default_rng(seed)
+
+        # Calculate result
+        normal_meta: dict[str, Any] = {}
         if self.uses_normals:
-            out = dict(self.apply(gt, rng, normal=normal))
+            normal, normal_meta["normal_source"] = _resolve_normals(
+                gt, normal, normal_estimator, force_normals
+            )
+            out = dict(self.apply(gt, normal, rng))
+            out["normals"] = normal
         else:
             out = dict(self.apply(gt, rng))
+
         sparse = np.asarray(out.get("sparse_depth"), dtype=np.float32)
         sparse = np.nan_to_num(sparse, nan=0.0, posinf=0.0, neginf=0.0)
         sparse[sparse < 0] = 0.0
@@ -91,6 +113,7 @@ class BaseDegradation(abc.ABC):
             )
         meta = {"degradation": type(self).__name__, "seed": seed}
         meta.update(self.params())
+        meta.update(normal_meta)
         meta.update(out.get("meta", {}))
         out["meta"] = meta
         return out
@@ -104,6 +127,22 @@ class BaseDegradation(abc.ABC):
             return {k: v for k, v in asdict(self).items() if k != "key"}
         except TypeError:  # not a dataclass
             return {}
+
+
+def _resolve_normals(
+    gt: np.ndarray, normal: np.ndarray | None, estimator: Any, force: bool
+) -> tuple[np.ndarray, str]:
+    """Pick the normal map: the dataset's, else the estimator's (always, if ``force``)."""
+    if normal is not None and not force:
+        return np.asarray(normal), "provided"
+    if estimator is None:
+        raise ValueError(
+            "this degradation needs a normal map: the dataset provides none"
+            + (" (and --force-normals asks for estimated ones)" if force else "")
+            + ", and no normal estimator was given (a configs/normals preset, e.g. --normals gt_cross)"
+        )
+    # BaseNormalMap.__call__ resolves intrinsics, cleans the depth and masks invalid normals
+    return estimator(gt)["normals"], f"estimated:{type(estimator).__name__}"
 
 
 @register_degradation("identity")

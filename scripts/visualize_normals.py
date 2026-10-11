@@ -18,11 +18,16 @@ Intrinsics come from ``sample["meta"]["intrinsics"]`` when the loader provides t
 otherwise from the preset -- those are placeholders, so the title says ``uncalibrated``.
 matplotlib lives in the ``notebooks`` dependency group.
 
-Colour code: n = (x right, y down, z forward) -> RGB = (n + 1) / 2. A surface facing the
-camera (0, 0, -1) is olive (0.5, 0.5, 0); a tread/floor (normal up = -y, tilted toward the
-camera) shifts toward red-orange, and a surface tilted right/left shifts the red channel.
-Invalid pixels (holes, depth edges, image border) are grey.  This is a per-pixel picture only;
-no aggregate normal-quality numbers are computed here.
+Palettes (``--palette``), camera frame x right, y down, z forward; invalid pixels are grey:
+
+    standard  the usual normal-map look, RGB = ((nx, -ny, -nz) + 1) / 2: facing the camera is
+              lavender-blue, tilted right is pinker, tilted up is greener.  Familiar, but
+              near-frontal normals (most of a staircase) get pale and similar.
+    hue       direction as colour: hue = tilt direction (red right, yellow up, cyan left,
+              violet down), saturation = tilt away from the camera axis (60 deg = full), so
+              a surface facing the camera is white and treads/risers/nosings separate clearly.
+
+Per-pixel pictures only; no aggregate normal-quality numbers are computed here.
 """
 
 from __future__ import annotations
@@ -36,6 +41,10 @@ from typing import Any
 import _bootstrap
 import numpy as np
 
+PALETTES = ("standard", "hue")
+HUE_FULL_TILT_DEG = 60.0  # tilt from the camera axis that reaches full saturation
+INVALID_GREY = 0.35
+
 DEFAULT_OUT_DIR = _bootstrap.REPO_ROOT / "outputs" / "normals_viz"  # gitignored
 
 
@@ -44,6 +53,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dataset", required=True, help="dataset config in configs/dataset/")
     p.add_argument(
         "--normals", default="gt_cross", help="preset in configs/normals/ (default: gt_cross)"
+    )
+    p.add_argument(
+        "--palette",
+        choices=PALETTES,
+        default="hue",
+        help="colour encoding of normals (default: hue); see the module docstring",
     )
     p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
     p.add_argument("-o", "--out", type=Path, default=None, help="output PNG path")
@@ -63,10 +78,26 @@ def load_samples(dataset: str, n: int) -> list[dict[str, Any]]:
     return [ds[i] for i in range(len(ds))]
 
 
-def normals_to_rgb(normals: np.ndarray, mask: np.ndarray, invalid: float = 0.35) -> np.ndarray:
-    """Encode unit normals as RGB in [0, 1]; invalid pixels become grey."""
-    img = np.clip((normals + 1.0) * 0.5, 0.0, 1.0)
-    return np.where(mask[..., None], img, invalid).astype(np.float32)
+def normals_to_rgb(
+    normals: np.ndarray, mask: np.ndarray, palette: str = "hue", invalid: float = INVALID_GREY
+) -> np.ndarray:
+    """Encode unit normals (camera frame, x right, y down, z forward) as RGB in [0, 1].
+
+    Invalid pixels become grey.  See the module docstring for the palettes.
+    """
+    nx, ny, nz = normals[..., 0], normals[..., 1], normals[..., 2]
+    if palette == "standard":
+        img = (np.stack([nx, -ny, -nz], axis=-1) + 1.0) * 0.5
+    elif palette == "hue":
+        from matplotlib.colors import hsv_to_rgb
+
+        hue = (np.arctan2(-ny, nx) / (2.0 * np.pi)) % 1.0  # y flipped: up = +90 deg
+        tilt = np.degrees(np.arccos(np.clip(-nz, -1.0, 1.0)))
+        sat = np.clip(tilt / HUE_FULL_TILT_DEG, 0.0, 1.0)
+        img = hsv_to_rgb(np.stack([hue, sat, np.ones_like(hue)], axis=-1))
+    else:
+        raise ValueError(f"palette must be one of {PALETTES}, got {palette!r}")
+    return np.where(mask[..., None], np.clip(img, 0.0, 1.0), invalid).astype(np.float32)
 
 
 def intrinsics_of(sample: dict[str, Any]) -> tuple[float, ...] | None:
@@ -118,7 +149,7 @@ def plot(samples: list[dict], estimator, args: argparse.Namespace):
         uncalibrated |= out["meta"]["intrinsics_source"] != "call"
         # judge normals only where the metrics would judge depth too
         mask = out["normal_mask"] & s["mask"]
-        pred_img = normals_to_rgb(out["normals"], mask)
+        pred_img = normals_to_rgb(out["normals"], mask, args.palette)
 
         valid = gt[gt > 0]
         vmin, vmax = np.percentile(valid, [1, 99]) if valid.size else (0.0, 1.0)
@@ -135,7 +166,7 @@ def plot(samples: list[dict], estimator, args: argparse.Namespace):
         if has_ref:
             ref = gt_normals_of(s)
             ref_valid = mask & (np.linalg.norm(ref, axis=-1) > 0.5)
-            row[2].imshow(normals_to_rgb(ref, ref_valid), interpolation="nearest")
+            row[2].imshow(normals_to_rgb(ref, ref_valid, args.palette), interpolation="nearest")
             row[2].set_title("GT normals", fontsize=9)
             row[3].imshow(pred_img, interpolation="nearest")
             row[3].set_title(f"predicted normals, valid {100 * mask.mean():.1f}%", fontsize=9)
@@ -156,7 +187,8 @@ def plot(samples: list[dict], estimator, args: argparse.Namespace):
             ax.set_yticks([])
 
     fig.suptitle(
-        f"{args.dataset} / {args.normals}" + ("  (uncalibrated)" if uncalibrated else ""),
+        f"{args.dataset} / {args.normals} / {args.palette}"
+        + ("  (uncalibrated)" if uncalibrated else ""),
         fontsize=11,
     )
     fig.tight_layout()
@@ -180,7 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(f"error: {e}") from None
     fig = plot(samples, estimator, args)
 
-    out = args.out or DEFAULT_OUT_DIR / f"{args.dataset}_{args.normals}.png"
+    out = args.out or DEFAULT_OUT_DIR / f"{args.dataset}_{args.normals}_{args.palette}.png"
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=110)
     print(f"saved {out}")

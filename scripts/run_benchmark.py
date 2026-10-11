@@ -40,6 +40,7 @@ from typing import Any
 
 import _bootstrap  # noqa: F401
 import run_baseline
+from _normals_cli import add_normals_args
 
 from metrics.depth_metrics import METRIC_NAMES, PRIMARY_METRICS
 from utils.config import CONFIG_ROOT
@@ -59,6 +60,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--datasets", nargs="*", default=None, help=f"any of {_names('dataset')}")
     p.add_argument("--models", nargs="*", default=None, help=f"any of {_names('model')}")
     p.add_argument("--degradation", default=None, help="one degradation for the whole matrix")
+    add_normals_args(p)
     p.add_argument("--experiments", nargs="*", default=None, help=f"any of {_names('experiment')}")
     p.add_argument("--auto", action="store_true", help="skip cells that cannot run here")
     p.add_argument("--limit", type=int, default=None, help="samples per cell")
@@ -76,6 +78,10 @@ def _cell_args(dataset: str, model: str, args: argparse.Namespace) -> list[str]:
     argv = ["--dataset", dataset, "--model", model]
     if args.degradation:
         argv += ["--degradation", args.degradation]
+    if args.normals:
+        argv += ["--normals", args.normals]
+    if args.force_normals:
+        argv += ["--force-normals"]
     if args.limit is not None:
         argv += ["--limit", str(args.limit)]
     if args.device:
