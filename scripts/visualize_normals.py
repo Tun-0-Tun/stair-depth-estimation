@@ -57,7 +57,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--palette",
         choices=PALETTES,
-        default="hue",
+        default="standard",
         help="colour encoding of normals (default: hue); see the module docstring",
     )
     p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
