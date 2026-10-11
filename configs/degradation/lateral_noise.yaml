@@ -1,0 +1,20 @@
+# Lateral noise from a known normal map (Nguyen et al. 2012, Kinect v1 values) - NOT CALIBRATED
+# for the Astra 2. Any result produced with this file must carry "uncalibrated" in the notes column.
+# Needs a normal map: only datasets that provide one (e.g. hypersim with load_normals) can use it.
+# sigma_L(theta) = sigma_floor_px + sigma_angle_gain * theta / (pi/2 - theta), in pixels.
+type: lateral_noise
+sigma_floor_px: 2.0 # 0.8         # sigma_L0, pixels at the depth resolution
+sigma_angle_gain: 0.1 #0.035     # k_L
+theta_max_deg: 89.0
+sigma_max_px: 10.0
+correlation_length_px: 5.0  # 0 = independent per pixel; >0 = Gaussian-filtered offset field (length at ref depth)
+correlation_ref_depth_m: 2.0       # z_ref: depth where the length equals correlation_length_px
+correlation_depth_exponent: 0.0    # p in l(z)=l_ref*(z_ref/z)^p: 0 = const in px, 1 = const in metres, <0 grows with depth
+correlation_min_px: 0.5            # clip of l(z), also finest filter level
+correlation_max_px: 16.0           # clip of l(z), also coarsest filter level
+correlation_levels: 6              # log-spaced filter levels used when p != 0
+z_min: null          # metres; null = no lower limit (Astra 2 datasheet: 0.6)
+z_max: null          # metres; null = no upper limit (Astra 2 datasheet: 8.0)
+normal_resize_mode: nearest # nearest | bilinear
+angle_reference: optical_axis  # optical_axis | viewing_ray
+fill_missing_theta: true

@@ -26,7 +26,6 @@ from typing import Any
 
 import _bootstrap
 import numpy as np
-from _normals_cli import add_normals_args, build_normals, load_normals_cfg
 
 from utils.misc import resize_depth
 
@@ -46,7 +45,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="apply --degradation to GT even if the dataset ships a real sensor input",
     )
-    add_normals_args(p, default="gt_cross")
+    p.add_argument(
+        "--normals",
+        default="gt_cross",
+        help="normal-map method in configs/normals/ used when the dataset has no normals "
+        "(only for degradations that need them) (default: gt_cross)",
+    )
+    p.add_argument(
+        "--force-normals",
+        action="store_true",
+        help="compute normals with --normals even if the dataset provides them",
+    )
     p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
     p.add_argument(
         "--input",
@@ -70,6 +79,7 @@ def load_samples(
     """Return the first ``n`` samples and whether their input is uncalibrated."""
     from data.degradation import build_degradation
     from data.loaders import build_dataset
+    from data.norm import build_normal_map
     from utils.config import load_config
 
     deg = None
@@ -80,7 +90,7 @@ def load_samples(
         degradation=deg,
         max_samples=n,
         force_degradation=force,
-        normals=build_normals(load_normals_cfg(normals)) if normals else None,
+        normals=build_normal_map(dict(load_config("normals", normals))) if normals else None,
         force_normals=force_normals,
     )
 

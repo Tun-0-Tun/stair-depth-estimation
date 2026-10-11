@@ -40,7 +40,6 @@ from typing import Any
 
 import _bootstrap  # noqa: F401
 import run_baseline
-from _normals_cli import add_normals_args
 
 from metrics.depth_metrics import METRIC_NAMES, PRIMARY_METRICS
 from utils.config import CONFIG_ROOT
@@ -60,7 +59,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--datasets", nargs="*", default=None, help=f"any of {_names('dataset')}")
     p.add_argument("--models", nargs="*", default=None, help=f"any of {_names('model')}")
     p.add_argument("--degradation", default=None, help="one degradation for the whole matrix")
-    add_normals_args(p)
+    p.add_argument(
+        "--normals",
+        help="normal-map method in configs/normals/ used when the dataset has no normals "
+        "(only for degradations that need them)",
+    )
+    p.add_argument(
+        "--force-normals",
+        action="store_true",
+        help="compute normals with --normals even if the dataset provides them",
+    )
     p.add_argument("--experiments", nargs="*", default=None, help=f"any of {_names('experiment')}")
     p.add_argument("--auto", action="store_true", help="skip cells that cannot run here")
     p.add_argument("--limit", type=int, default=None, help="samples per cell")
