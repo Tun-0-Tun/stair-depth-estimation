@@ -51,22 +51,24 @@ def gdrive_file(file_id: str, dest: Path) -> None:
 # --------------------------------------------------------------------------
 
 
+def need(dest: Path) -> bool:
+    """True if ``dest`` must be fetched; says so when it is skipped."""
+    if dest.exists() and not FORCE:
+        print(f"   have {dest.relative_to(_bootstrap.REPO_ROOT)}")
+        return False
+    return True
+
+
 def ducos() -> None:
-    for name in ("x4", "RealRGBDD", "RealTOFDSR"):
-        dest = CKPT / "ducos" / f"{name}.pth.tar"
-        if not dest.exists() or FORCE:
-            hf("RaynWu2002/DuCos", f"DuCos/ckpts/{name}.pth.tar", dest)
+    dest = CKPT / "ducos" / "x4.pth.tar"  # the only DuCos file any config uses
+    if need(dest):
+        hf("RaynWu2002/DuCos", "DuCos/ckpts/x4.pth.tar", dest)
 
 
 def depthor() -> None:
-    # Drive ids from third_party/depthor/README.md
-    for size, fid in (
-        ("large", "1oZByVUklbjQHlZTdKFQdwkMKkugi4l6-"),
-        ("small", "1P5I54TZctkilvRMTAzMJHzZs9OdN1fBp"),
-    ):
-        dest = CKPT / "depthor" / f"depthor_zju_{size}.pt"
-        if not dest.exists() or FORCE:
-            gdrive_file(fid, dest)
+    dest = CKPT / "depthor" / "depthor_zju_large.pt"  # Drive id from third_party/depthor/README.md
+    if need(dest):
+        gdrive_file("1oZByVUklbjQHlZTdKFQdwkMKkugi4l6-", dest)
 
 
 def wave() -> None:
@@ -79,7 +81,7 @@ def wave() -> None:
         "NYUV2_Patch_448_Scale_32": "NYU32x.pth",
     }
     out = CKPT / "wave"
-    if all((out / n).exists() for n in wanted.values()) and not FORCE:
+    if not any(need(out / n) for n in wanted.values()):
         return
     up = CKPT / "wave_upstream"
     gdown.download_folder(
@@ -105,7 +107,7 @@ def dornet() -> None:
 
 def promptda() -> None:
     dest = CKPT / "promptda" / "promptda_vitl.ckpt"
-    if not dest.exists() or FORCE:
+    if need(dest):
         hf("depth-anything/prompt-depth-anything-vitl", "model.ckpt", dest)
 
 
@@ -115,7 +117,7 @@ def prior_da() -> None:
         "prior_depth_anything_vitb_1_1.pth",
         "depth_anything_v2_vitb.pth",
     ):  # names fixed by upstream
-        if not (d / name).exists() or FORCE:
+        if need(d / name):
             hf("Rain729/Prior-Depth-Anything", name, d / name)
 
 
@@ -124,14 +126,14 @@ def omni_dc() -> None:
     from huggingface_hub import snapshot_download
 
     d = CKPT / "omni_dc"
-    if not (d / "model.safetensors").exists() or FORCE:
+    if need(d / "model.safetensors"):
         snapshot_download("zuoym15/OMNI-DC", local_dir=d)
     dav2("Large", "vitl")
 
 
 def dav2(size: str, enc: str) -> None:
     dest = CKPT / f"depth_anything_v2_{enc}.pth"
-    if not dest.exists() or FORCE:
+    if need(dest):
         hf(DAV2.format(size), f"depth_anything_v2_{enc}.pth", dest)
 
 
