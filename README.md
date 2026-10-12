@@ -14,6 +14,7 @@ required baselines, and a harness that scores all of them with the same code.
 git clone --recurse-submodules <repo> && cd stair-depth-estimation
 uv sync --group baselines           # omit the group if you only touch our code
 export STAIR_DATA_ROOT=/path/to/shared/data
+uv run --group baselines python scripts/download_weights.py   # all baseline weights -> checkpoints/
 uv run pre-commit install
 uv run pytest
 uv run python scripts/run_baseline.py experiment=smoke
@@ -118,7 +119,10 @@ what to do when it fails: **[docs/running.md](docs/running.md)**.
 | DuCos (ICCV 2025) | ✅ submodule | ✅ HuggingFace | anything — **verified end to end** |
 | DEPTHOR v1 (ICCV 2025) | ✅ submodule | ✅ Google Drive (`gdown`) | anything — **paper numbers reproduced**, via `baselines/bpops_shim.py` |
 | WAVE (2026) | ✅ submodule | ✅ Google Drive (`gdown`) | CUDA — x8/x16/x32, one checkpoint each |
-| DORNet (CVPR 2025) | ❌ not vendored | — | nothing set up yet |
+| DORNet (CVPR 2025) | ✅ submodule | ✅ in the submodule (`checkpoints/`) | CUDA + `mmcv` — adapter written, not yet run |
+| Prior Depth Anything (ICLR 2026) | ✅ submodule | ✅ HuggingFace (2 files) | CUDA + `torch_cluster` — adapter written, not yet run |
+| PromptDA (CVPR 2025) | ✅ submodule | ✅ HuggingFace | CUDA — adapter written, not yet run |
+| OMNI-DC v1.1 (ICCV 2025) | ✅ submodule | ✅ Google Drive / HuggingFace + DAv2 vitl | CUDA + `mmcv` 1.x/`mmseg` (own env) — adapter written, not yet run |
 | `local_bilateral` (ours, no task-specific training) | ✅ `baselines/local_bilateral.py` | ✅ DAv2 backbone only | anything — also the DuCos/DEPTHOR backbone ablation |
 | DEPTHOR++ | ❌ unreleased | ❌ unreleased | [details](docs/metrics_protocol.md#baseline-availability) |
 | `bicubic`, `nn_fill` | reference floors | — | anything |

@@ -192,16 +192,21 @@ class BaselineModel(abc.ABC):
         }
 
 
-def add_third_party_to_path(name: str) -> Path:
-    """Put ``third_party/<name>`` on ``sys.path`` and check the submodule is cloned."""
-    path = THIRD_PARTY / name
-    if not path.exists() or not any(path.iterdir()):
+def add_third_party_to_path(name: str, sub: str = "", prepend: bool = True) -> Path:
+    """Put ``third_party/<name>/<sub>`` on ``sys.path`` and check the submodule is cloned.
+
+    ``prepend=False`` for upstream repos with top-level ``utils``/``data``/``config``
+    modules (DORNet, OMNI-DC): appended, they can never shadow ours.
+    """
+    root = THIRD_PARTY / name
+    if not root.exists() or not any(root.iterdir()):
         raise RuntimeError(
             f"third_party/{name} is empty. Run:\n    git submodule update --init --recursive"
         )
+    path = root / sub
     p = str(path)
     if p not in sys.path:
-        sys.path.insert(0, p)
+        sys.path.insert(0, p) if prepend else sys.path.append(p)
     return path
 
 

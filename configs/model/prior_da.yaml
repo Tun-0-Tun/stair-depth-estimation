@@ -1,0 +1,13 @@
+name: prior_da
+adapter: prior_da
+available: true
+paper: "Wang et al., Prior Depth Anything, ICLR 2026 (arXiv:2505.10565)"
+submodule: third_party/prior_depth_anything
+# sparse -> RGB + sparse points (completion); lr -> RGB + dense low-resolution map (SR).
+# One set of weights serves both:  model.input=lr degradation=bicubic_x8
+input: sparse
+version: "1.1"
+# Both files from huggingface.co/Rain729/Prior-Depth-Anything; the names are fixed by upstream.
+checkpoint: checkpoints/prior_depth_anything/prior_depth_anything_vitb_1_1.pth
+depth_anything_ckpt: checkpoints/prior_depth_anything/depth_anything_v2_vitb.pth
+docs: docs/baselines.md

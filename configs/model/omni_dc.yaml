@@ -1,0 +1,10 @@
+name: omni_dc
+adapter: omni_dc
+available: true
+paper: "Zuo et al., OMNI-DC, ICCV 2025 (arXiv:2411.19278)"
+submodule: third_party/omni_dc
+# Directory from scripts/download_weights.py (HF zuoym15/OMNI-DC, v1.1); a .pt file (Google Drive) works too.
+checkpoint: checkpoints/omni_dc
+# v1.1 concatenates Depth Anything V2 *vitl* to the sparse map.
+depth_anything_ckpt: checkpoints/depth_anything_v2_vitl.pth
+docs: docs/baselines.md

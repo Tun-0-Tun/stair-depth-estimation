@@ -1,0 +1,32 @@
+# Prior Depth Anything v1.1 on NYU v2, 500 random exact points (NYU-DC protocol).
+# Rough reference only, not a +-10% anchor: OMNI-DC's README lists NYU_500 RMSE 0.112 / REL 0.014
+# for OMNI-DC v1.1, but on the 654-frame h5 val set and with its own sampling; ours is the 449-frame
+# .mat test split. Compare Prior-DA to OMNI-DC here (same input), not either to a paper number.
+defaults:
+  - dataset: nyuv2
+  - model: prior_da
+  - degradation: random_sparse_500
+
+seed: 0
+device: auto
+dataset:
+  # Same 449 test frames as ducos_nyuv2_x4: the DSR npy pack is not on the server,
+  # so they come from the official labeled .mat. simulate_from: gt -- the .mat also
+  # carries rawDepths (real Kinect), which would otherwise replace the simulated input.
+  layout: mat
+  mat_range: [1000, 1449]
+  simulate_from: gt
+model:
+  checkpoint: checkpoints/prior_depth_anything/prior_depth_anything_vitb_1_1.pth
+eval:
+  crop: eigen
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "zero-shot; 500 random points; 449-frame .mat split"

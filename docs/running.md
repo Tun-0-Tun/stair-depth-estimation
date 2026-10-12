@@ -52,10 +52,10 @@ uv run python scripts/run_baseline.py experiment=depthor_zju_l5 eval.max_samples
 
 | Group | Where the options live | List them |
 |---|---|---|
-| model | `configs/model/*.yaml` | `bicubic` `nn_fill` `ducos` `depthor` `depthor_plus_plus` `ours` |
+| model | `configs/model/*.yaml` | `bicubic` `nn_fill` `ducos` `depthor` `depthor_plus_plus` `wave` `dornet` `promptda` `prior_da` `omni_dc` `ours` |
 | dataset | `configs/dataset/*.yaml` | `void_stairs` `minjiang` `zju_l5` `nyuv2` `hammer` `synthetic_stairs` |
 | degradation | `configs/degradation/*.yaml` | `none` `identity` `astra2_uncalibrated` `dtof_l5` `dtof_l5_center` `bicubic_x4` `bicubic_x8` `bicubic_x16` `bicubic_x32` `random_sparse_500` |
-| experiment | `configs/experiment/*.yaml` | `smoke` `depthor_zju_l5` `depthor_minjiang` `ducos_nyuv2_x4` `wave_*` `nn_fill_minjiang_dtof` `bicubic_minjiang_x8` |
+| experiment | `configs/experiment/*.yaml` | `smoke` `depthor_zju_l5` `depthor_minjiang` `ducos_nyuv2_x4` `wave_*` `dornet_nyuv2_x4` `promptda_nyuv2_x8` `prior_da_nyuv2_sparse500` `omni_dc_nyuv2_sparse500` `nn_fill_minjiang_dtof` `bicubic_minjiang_x8` |
 
 **When do I need `--degradation`?** Only for datasets that ship ground truth
 but no sensor input — `minjiang`, `nyuv2`, `synthetic_stairs`. They will refuse

@@ -1,0 +1,31 @@
+# PromptDA vitl on NYU v2 with an x8 bicubic LR depth as the prompt.
+# A sanity run, not a reproduction: PromptDA is not evaluated on NYU in its paper and
+# was trained on iPhone LiDAR prompts (LR/HR ratio ~7.5), so x8 is the closest synthetic protocol.
+defaults:
+  - dataset: nyuv2
+  - model: promptda
+  - degradation: bicubic_x8
+
+seed: 0
+device: auto
+dataset:
+  # Same 449 test frames as ducos_nyuv2_x4: the DSR npy pack is not on the server,
+  # so they come from the official labeled .mat. simulate_from: gt -- the .mat also
+  # carries rawDepths (real Kinect), which would otherwise replace the simulated input.
+  layout: mat
+  mat_range: [1000, 1449]
+  simulate_from: gt
+model:
+  checkpoint: checkpoints/promptda/promptda_vitl.ckpt
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "zero-shot on NYU; bicubic LR prompt"

@@ -29,7 +29,7 @@ from utils.config import CONFIG_ROOT, load_config
 #: Baselines that need no weights and no CUDA -- the ones CI can really run.
 DEPENDENCY_FREE = ("nn_fill", "bicubic")
 #: Baselines wrapping third_party code; run only where they are installed.
-UPSTREAM = ("depthor", "ducos", "wave")
+UPSTREAM = ("depthor", "ducos", "wave", "dornet", "promptda", "prior_da", "omni_dc")
 
 
 @pytest.fixture(scope="module")

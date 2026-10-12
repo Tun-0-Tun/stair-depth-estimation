@@ -1,0 +1,33 @@
+# DORNet x4 NYU v2 (synthetic bicubic protocol, the same one as ducos_nyuv2_x4).
+# Regression anchor: DORNet paper (arXiv:2410.11666) NYU x4 RMSE -- NOT filled in yet; take it
+# from the paper's NYU table after the first server run and compare within the SOW's +-10%.
+# RGB min-max normalisation mirrors the DuCos adapter and is unverified for DORNet.
+defaults:
+  - dataset: nyuv2
+  - model: dornet
+  - degradation: bicubic_x4
+
+seed: 0
+device: auto
+dataset:
+  # Same 449 test frames as ducos_nyuv2_x4: the DSR npy pack is not on the server,
+  # so they come from the official labeled .mat. simulate_from: gt -- the .mat also
+  # carries rawDepths (real Kinect), which would otherwise replace the simulated input.
+  layout: mat
+  mat_range: [1000, 1449]
+  simulate_from: gt
+model:
+  checkpoint: third_party/dornet/checkpoints/NYU_X4.pth
+  scale: 4
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "mirrors the DuCos adapter (min/max from the LR input); rgb normalisation unverified"

@@ -1,0 +1,12 @@
+name: promptda
+adapter: promptda
+available: true
+paper: "Lin et al., PromptDA, CVPR 2025 (arXiv:2412.14015)"
+submodule: third_party/promptda
+# vitl is the model the paper benchmarks; vits / vits-transparent are the small ones
+# (set encoder: vits together with the matching checkpoint).
+encoder: vitl
+# upstream's load_image caps the long side here; larger frames are resized down, output resized back
+max_size: 1008
+checkpoint: checkpoints/promptda/promptda_vitl.ckpt
+docs: docs/baselines.md
