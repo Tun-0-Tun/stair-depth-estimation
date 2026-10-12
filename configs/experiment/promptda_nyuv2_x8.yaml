@@ -1,6 +1,11 @@
 # PromptDA vitl on NYU v2 with an x8 bicubic LR depth as the prompt.
 # A sanity run, not a reproduction: PromptDA is not evaluated on NYU in its paper and
 # was trained on iPhone LiDAR prompts (LR/HR ratio ~7.5), so x8 is the closest synthetic protocol.
+# Measured 2026-10-12 on sinope (449 frames, border6): RMSE 0.178 m, AbsRel 0.0255, d1 0.984, 7.2 FPS --
+# worse than the bicubic floor (0.072 m) and WAVE (0.025 m). Checked and ruled out: global scale/shift
+# (affine fit: 0.180), prompt resolution (full-res prompt: same), RGB resolution (long side 1008: worse).
+# Even with the exact GT as prompt the small model keeps ~0.13 m on a synthetic scene: PromptDA does not
+# reproduce its prompt, so a clean bicubic prompt is not what it is for. Not an adapter bug as far as we found.
 defaults:
   - dataset: nyuv2
   - model: promptda

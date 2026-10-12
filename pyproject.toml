@@ -54,6 +54,7 @@ baselines = [
     "pytorch-wavelets",        # WAVE Components/WAVE.py imports DWTForward (pulls in PyWavelets)
     "setuptools<81",           # pytorch_wavelets imports pkg_resources, gone in setuptools 81
     "einops>=0.8",             # Prior Depth Anything, OMNI-DC
+    "matplotlib>=3.7",         # prior_depth_anything/utils.py imports it at module level
 #    "pytorch-msssim",          # WAVE Utilities/Evaluation.py imports ssim
 #    "tensorboardX",            # WAVE Utilities/Logger.py imports SummaryWriter
 ]

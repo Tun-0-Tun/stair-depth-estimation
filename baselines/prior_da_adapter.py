@@ -82,6 +82,7 @@ class PriorDAAdapter(BaselineModel):
             ("huggingface_hub", "pip install huggingface-hub"),
             ("cv2", "pip install opencv-python-headless"),
             ("einops", "pip install einops"),
+            ("matplotlib", "pip install matplotlib"),  # upstream utils imports it at module level
             ("safetensors", "pip install safetensors"),
         ):
             if importlib.util.find_spec(mod) is None:
@@ -118,7 +119,10 @@ class PriorDAAdapter(BaselineModel):
         import torch
 
         h, w = rgb.shape[:2]
-        depth = np.nan_to_num(depth_in, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
+        # C-contiguous: loaders may hand over transposed views, and upstream calls .view() on them
+        depth = np.ascontiguousarray(
+            np.nan_to_num(depth_in, nan=0.0, posinf=0.0, neginf=0.0), dtype=np.float32
+        )
         depth[depth < 0] = 0.0
         if (depth > 0).sum() < _K:
             self.n_degenerate += 1
@@ -126,7 +130,7 @@ class PriorDAAdapter(BaselineModel):
             fill = float(known.mean()) if known.size else self.min_depth
             return np.clip(np.full((h, w), fill, dtype=np.float32), self.min_depth, self.max_depth)
 
-        image = np.clip(np.rint(rgb * 255.0), 0, 255).astype(np.uint8)
+        image = np.ascontiguousarray(np.clip(np.rint(rgb * 255.0), 0, 255), dtype=np.uint8)
         with torch.no_grad():
             out = self.model.infer_one_sample(image=image, prior=depth)
         pred = out.squeeze().detach().float().cpu().numpy()
