@@ -55,13 +55,18 @@ def purge_third_party() -> None:
     here because each model has already predicted every frame by the time this runs.
     """
     tp = str(_bootstrap.REPO_ROOT / "third_party")
+    doomed = []
     for name, mod in list(sys.modules.items()):
-        try:  # a few modules (torch.classes) have a __path__ that is not a list
+        # Decide first, delete after: a namespace package recomputes its __path__ from its
+        # parent in sys.modules, so deleting while looking raises KeyError.
+        try:
             places = [getattr(mod, "__file__", None), *list(getattr(mod, "__path__", None) or [])]
-        except TypeError:
+        except Exception:  # torch.classes and friends: never ours
             continue
         if any(p and str(p).startswith(tp) for p in places):
-            del sys.modules[name]
+            doomed.append(name)
+    for name in doomed:
+        sys.modules.pop(name, None)
     sys.path[:] = [p for p in sys.path if not str(p).startswith(tp)]
 
 
