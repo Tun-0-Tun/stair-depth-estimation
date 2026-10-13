@@ -26,9 +26,15 @@ What this adapter absorbs
    cropped back.  The model whitens the sparse depth by its median internally,
    so metres go in and metres come out.
 
-Environment: the model imports ``mmcv.runner`` and ``mmseg`` (``model/pvt.py``),
-so it needs mmcv 1.x (upstream pins mmcv==1.4.4) -- which does not coexist with
-the mmcv that DORNet's deformable conv uses.  Plan on a separate environment.
+5. **mmcv / mmseg.**  ``model/pvt.py`` imports ``mmcv.runner.load_checkpoint`` and
+   ``mmseg.utils.get_root_logger`` at module level, but calls them only for a *string*
+   ``pretrained`` argument; ``backbone.py`` passes a ``Path``, so they are dead code.
+   They are stubbed (raising if ever called) when the real packages are absent, so no
+   OpenMMLab install is needed.
+6. **Initialisation weights.**  The model ``torch.load``s ``src/pretrained/resnet34.pth``
+   (Drive download in the upstream README) while being constructed.  Those layers are part
+   of the checkpoint and overwritten by it, so a randomly initialised ResNet state dict is
+   served instead -- the strict load below fails if the checkpoint did not cover them.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ import contextlib
 import importlib
 import importlib.util
 import sys
+import types
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +107,49 @@ def _omni_args(src: Path) -> Any:
     return mod.args
 
 
+def _stub_openmmlab() -> None:
+    """Dead imports of ``model/pvt.py`` (see module docstring, item 5)."""
+
+    def unused(*args: Any, **kwargs: Any):
+        raise RuntimeError(
+            "OMNI-DC adapter: an mmcv/mmseg stub was called; pvt got a str `pretrained`"
+        )
+
+    for mod, attr in (("mmcv.runner", "load_checkpoint"), ("mmseg.utils", "get_root_logger")):
+        try:
+            if hasattr(importlib.import_module(mod), attr):
+                continue
+        except ImportError:
+            pass
+        top = mod.split(".")[0]
+        parent = sys.modules.setdefault(top, types.ModuleType(top))
+        child = types.ModuleType(mod)
+        setattr(child, attr, unused)
+        setattr(parent, mod.split(".")[1], child)
+        sys.modules[mod] = child
+
+
+@contextlib.contextmanager
+def _random_resnet_weights():
+    """Serve ``resnet{18,34}.pth`` as a random state dict (item 6)."""
+    import torch
+    import torchvision
+
+    original = torch.load
+
+    def patched(f, *args, **kwargs):
+        name = Path(str(f)).name
+        if name in ("resnet18.pth", "resnet34.pth"):
+            return getattr(torchvision.models, name[:-4])(weights=None).state_dict()
+        return original(f, *args, **kwargs)
+
+    torch.load = patched
+    try:
+        yield
+    finally:
+        torch.load = original
+
+
 @register_baseline("omni_dc")
 class OmniDCAdapter(BaselineModel):
     """OMNI-DC v1.1: RGB + sparse metric depth -> dense metric depth."""
@@ -109,13 +159,12 @@ class OmniDCAdapter(BaselineModel):
     paper = "Zuo et al., OMNI-DC, ICCV 2025 (arXiv:2411.19278)"
     submodule = "omni_dc"
 
-    def __init__(
-        self,
-        depth_anything_ckpt: str | None = "checkpoints/depth_anything_v2_vitl.pth",
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, **kwargs: Any) -> None:
+        # depth_anything_ckpt stays in kwargs: that is how it reaches ``availability``
         super().__init__(**kwargs)
-        self.depth_anything_ckpt = depth_anything_ckpt
+        self.depth_anything_ckpt = kwargs.get(
+            "depth_anything_ckpt", "checkpoints/depth_anything_v2_vitl.pth"
+        )
         self.n_degenerate = 0
         self._divisor = 16
 
@@ -134,8 +183,7 @@ class OmniDCAdapter(BaselineModel):
             ("timm", "pip install timm"),
             ("einops", "pip install einops"),
             ("huggingface_hub", "pip install huggingface-hub"),
-            ("mmcv", "pip install mmcv==1.4.4 (upstream; needs `mmcv.runner`, i.e. mmcv 1.x)"),
-            ("mmseg", "pip install mmsegmentation==0.22.1"),
+            ("torchvision", "pip install torchvision"),
         ):
             if importlib.util.find_spec(mod) is None:
                 reasons.append(f"missing python package: {mod}")
@@ -167,7 +215,11 @@ class OmniDCAdapter(BaselineModel):
         args = _omni_args(src)
         self._divisor = int(4 * 2 ** (args.num_resolution - 1))
 
-        with _redirect_torch_load(_DA2_FILENAME, self.depth_anything_ckpt):
+        _stub_openmmlab()
+        with (
+            _redirect_torch_load(_DA2_FILENAME, self.depth_anything_ckpt),
+            _random_resnet_weights(),
+        ):
             OGNIDC = importlib.import_module("model.ognidc").OGNIDC
             if Path(checkpoint_path).is_dir():
                 net = OGNIDC.from_pretrained(str(checkpoint_path), args=args)

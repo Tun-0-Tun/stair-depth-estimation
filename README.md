@@ -119,10 +119,10 @@ what to do when it fails: **[docs/running.md](docs/running.md)**.
 | DuCos (ICCV 2025) | ✅ submodule | ✅ HuggingFace | anything — **verified end to end** |
 | DEPTHOR v1 (ICCV 2025) | ✅ submodule | ✅ Google Drive (`gdown`) | anything — **paper numbers reproduced**, via `baselines/bpops_shim.py` |
 | WAVE (2026) | ✅ submodule | ✅ Google Drive (`gdown`) | CUDA — x8/x16/x32, one checkpoint each |
-| DORNet (CVPR 2025) | ✅ submodule | ✅ in the submodule (`checkpoints/`) | CUDA + `mmcv` — adapter written, not yet run |
+| DORNet (CVPR 2025) | ✅ submodule | ✅ in the submodule (`checkpoints/`) | anything — `mmcv`'s deformable conv replaced by `baselines/mmcv_shim.py` (torchvision) when mmcv is absent; not yet run on NYU |
 | Prior Depth Anything (ICLR 2026) | ✅ submodule | ✅ HuggingFace (2 files) | CUDA + `torch_cluster` — adapter written, not yet run |
 | PromptDA (CVPR 2025) | ✅ submodule | ✅ HuggingFace | CUDA — adapter written, not yet run |
-| OMNI-DC v1.1 (ICCV 2025) | ✅ submodule | ✅ Google Drive / HuggingFace + DAv2 vitl | CUDA + `mmcv` 1.x/`mmseg` (own env) — adapter written, not yet run |
+| OMNI-DC v1.1 (ICCV 2025) | ✅ submodule | ✅ HuggingFace `zuoym15/OMNI-DC` + DAv2 vitl | CUDA — mmcv/mmseg are not needed (dead imports stubbed); not yet run |
 | `local_bilateral` (ours, no task-specific training) | ✅ `baselines/local_bilateral.py` | ✅ DAv2 backbone only | anything — also the DuCos/DEPTHOR backbone ablation |
 | DEPTHOR++ | ❌ unreleased | ❌ unreleased | [details](docs/metrics_protocol.md#baseline-availability) |
 | `bicubic`, `nn_fill` | reference floors | — | anything |

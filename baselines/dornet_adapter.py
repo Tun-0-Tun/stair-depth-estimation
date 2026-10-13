@@ -13,8 +13,10 @@ zero-range guard).  Differences absorbed here:
 
 1. ``Net(tiny_model=...)`` instead of an args namespace; no Depth Anything backbone.
 2. Call ``net(x_query=lr, rgb=guidance)`` and get a bare tensor.
-3. ``net/deform_conv.py`` imports ``mmcv.ops.modulated_deform_conv2d`` -- a CUDA
-   op, so DORNet needs mmcv built against the installed torch/CUDA.
+3. ``net/deform_conv.py`` imports ``mmcv.ops.modulated_deform_conv2d`` -- a compiled
+   op with no wheels for torch 2.6 / cu124.  If mmcv is absent, ``baselines/mmcv_shim.py``
+   stands in (torchvision's DCNv2, checked against the formula in
+   ``tests/test_mmcv_shim.py``); the run records ``deform="shim"``.
 4. ``third_party/dornet`` has a top-level ``utils.py`` and ``data/``: it goes on
    ``sys.path`` *after* the repo root so it cannot shadow our packages.
 
@@ -49,6 +51,7 @@ class DORNetAdapter(DuCosAdapter):
     ) -> None:
         super().__init__(scale=scale, depth_anything_ckpt=None, upsample=upsample, **kwargs)
         self.tiny_model = bool(tiny_model)
+        self.deform = "unloaded"
 
     @classmethod
     def availability(cls, checkpoint_path: str | Path | None = None, **kwargs: Any) -> Availability:
@@ -62,10 +65,7 @@ class DORNetAdapter(DuCosAdapter):
 
         for mod, hint in (
             ("torch", "pip install torch"),
-            (
-                "mmcv",
-                "install mmcv built for the installed torch/CUDA (upstream pins mmcv-full==1.7.2)",
-            ),
+            ("torchvision", "pip install torchvision"),
         ):
             if importlib.util.find_spec(mod) is None:
                 reasons.append(f"missing python package: {mod}")
@@ -83,6 +83,15 @@ class DORNetAdapter(DuCosAdapter):
     def _load(self, checkpoint_path: Path | None) -> Any:
         import torch
 
+        from baselines.mmcv_shim import install as install_mmcv
+
+        self.deform = "shim" if install_mmcv() else "mmcv"
+        if self.deform == "shim":
+            print(
+                "[dornet] mmcv not found; using baselines/mmcv_shim.py (torchvision DCNv2, "
+                "tested against the formula in tests/test_mmcv_shim.py); the run is tagged deform=shim."
+            )
+
         add_third_party_to_path("dornet", prepend=False)
         Net = importlib.import_module("net.dornet").Net
 
@@ -96,4 +105,4 @@ class DORNetAdapter(DuCosAdapter):
         return self.model(x_query=dep_t, rgb=rgb_t)
 
     def describe(self) -> dict[str, Any]:
-        return {**super().describe(), "tiny_model": self.tiny_model}
+        return {**super().describe(), "tiny_model": self.tiny_model, "deform": self.deform}
