@@ -6,11 +6,14 @@
         --methods prior_da:random_sparse_500 omni_dc:random_sparse_500 dornet:bicubic_x4
 
 A method is ``<model config>:<degradation config>`` (``configs/model``, ``configs/degradation``) and runs
-with that model's default checkpoint.  One PNG per frame, three rows:
+with that model's default checkpoint.  One PNG per frame:
 
-    inputs   RGB | GT | one panel per distinct degradation (500 points are dilated so they are visible)
-    outputs  one prediction per method, title = method, input, AbsRel / RMSE / delta1 on this frame
-    error    (pred - gt) / gt, red = too far, blue = too near, grey = no GT
+    row 1    RGB | GT | one prediction per method; each title = method, input, AbsRel / RMSE / delta1 here
+    row 2    what each method received, under its prediction (500 points are dilated so they are visible);
+             --no-inputs drops it
+    row 3    --error: (pred - gt) / gt, red = too far, blue = too near, grey = no GT
+             --mask-pred blanks the predictions where the GT is missing (the default shows what the
+             model draws there, which is invented depth)
 
 Depth panels share one colour scale per frame (2nd-98th percentile of the GT).  Numbers come from
 ``metrics/depth_metrics.py``; everything else here is a picture.  Output: ``outputs/compare/<tag>/``.
@@ -106,6 +109,16 @@ def main() -> int:
     ap.add_argument(
         "--err", type=float, default=0.25, help="error colour range, relative (0.25 = +-25%%)"
     )
+    ap.add_argument(
+        "--no-inputs",
+        dest="inputs",
+        action="store_false",
+        help="drop the row with each method's input",
+    )
+    ap.add_argument("--error", action="store_true", help="add a row with the signed relative error")
+    ap.add_argument(
+        "--mask-pred", action="store_true", help="blank predictions where the GT is missing"
+    )
     args = ap.parse_args()
 
     import matplotlib
@@ -173,8 +186,8 @@ def main() -> int:
     ecmap.set_bad("#bbbbbb")
 
     degs = list(datasets)
-    kind_of = {deg: next(r[2] for r in results if r[1] == deg) for deg in degs}
-    ncols = max(2 + len(degs), len(results))
+    ncols = 2 + len(results)
+    nrows = 1 + int(args.inputs) + int(args.error)
     rows_csv = []
     for fi, sid in enumerate(ids):
         base = samples[degs[0]][fi]
@@ -182,31 +195,41 @@ def main() -> int:
         v = gt[np.isfinite(gt)]
         vmin, vmax = (np.percentile(v, 2), np.percentile(v, 98)) if v.size else (0.0, 1.0)
 
-        fig, axes = plt.subplots(3, ncols, figsize=(3.4 * ncols, 7.6), squeeze=False)
+        fig, axes = plt.subplots(
+            nrows, ncols, figsize=(3.0 * ncols, 2.6 * nrows + 0.9), squeeze=False
+        )
+        # row 0: RGB | GT | one prediction per method
         axes[0, 0].imshow(np.clip(base["rgb"], 0, 1))
         axes[0, 0].set_title("RGB", fontsize=8)
         axes[0, 1].imshow(gt, cmap=cmap, vmin=vmin, vmax=vmax)
         axes[0, 1].set_title("GT (для ours: глубина сенсора)", fontsize=8)
-        for j, deg in enumerate(degs):
-            s = samples[deg][fi]
-            inp = input_panel(s, kind_of[deg])
-            axes[0, 2 + j].imshow(np.clip(s["rgb"], 0, 1) * 0.35)
-            axes[0, 2 + j].imshow(
-                np.where(inp > 0, inp, np.nan), cmap=overlay, vmin=vmin, vmax=vmax
-            )
-            axes[0, 2 + j].set_title(f"вход: {deg}", fontsize=8)
-        for j, (name, deg, _, preds, mets) in enumerate(results):
+        for j, (name, deg, kind, preds, mets) in enumerate(results):
             s = samples[deg][fi]
             m = mets[fi]
-            axes[1, j].imshow(preds[fi], cmap=cmap, vmin=vmin, vmax=vmax)
-            axes[1, j].set_title(
+            col = 2 + j
+            pred = preds[fi]
+            if args.mask_pred:
+                pred = np.where(s["mask"], pred, np.nan)
+            axes[0, col].imshow(pred, cmap=cmap, vmin=vmin, vmax=vmax)
+            axes[0, col].set_title(
                 f"{name} [{deg}]\nAbsRel {m['absrel']:.3f}  RMSE {m['rmse']:.3f}  δ1 {m['delta1']:.3f}",
                 fontsize=8,
             )
-            rel = np.where(
-                s["mask"], (preds[fi] - s["gt_depth"]) / np.maximum(s["gt_depth"], 1e-6), np.nan
-            )
-            axes[2, j].imshow(rel, cmap=ecmap, vmin=-args.err, vmax=args.err)
+            row = 1
+            if args.inputs:  # what this very method received, under its prediction
+                inp = input_panel(s, kind)
+                axes[row, col].imshow(np.clip(s["rgb"], 0, 1) * 0.35)
+                axes[row, col].imshow(
+                    np.where(inp > 0, inp, np.nan), cmap=overlay, vmin=vmin, vmax=vmax
+                )
+                axes[row, col].set_title("вход метода", fontsize=7)
+                row += 1
+            if args.error:
+                rel = np.where(
+                    s["mask"], (preds[fi] - s["gt_depth"]) / np.maximum(s["gt_depth"], 1e-6), np.nan
+                )
+                axes[row, col].imshow(rel, cmap=ecmap, vmin=-args.err, vmax=args.err)
+                axes[row, col].set_title("(pred−gt)/gt", fontsize=7)
             rows_csv.append(
                 {
                     "sample_id": sid,
@@ -224,7 +247,13 @@ def main() -> int:
             if meta.get(k) is not None
         )
         fig.suptitle(
-            f"{sid}  {tags}\nряд 3: (pred−gt)/gt, красный = дальше, синий = ближе, серый = нет GT, ±{args.err:.0%}",
+            f"{sid}  {tags}"
+            + (
+                f"\nошибка: красный = дальше, синий = ближе, серый = нет GT, ±{args.err:.0%}"
+                if args.error
+                else ""
+            )
+            + ("\nчёрное в GT = нет значения сенсора" if not args.mask_pred else ""),
             fontsize=9,
         )
         fig.tight_layout(rect=(0, 0, 1, 0.94))
