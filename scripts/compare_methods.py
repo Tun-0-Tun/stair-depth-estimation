@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gc
+import sys
 from pathlib import Path
 
 import _bootstrap
@@ -44,6 +45,21 @@ DEFAULT_METHODS = (
     "wave:bicubic_x8",
     "promptda:bicubic_x8",
 )
+
+
+def purge_third_party() -> None:
+    """Forget every module and ``sys.path`` entry that came from ``third_party/``.
+
+    Upstream repos reuse top-level names (OMNI-DC and DuCos both have a ``model`` package, DORNet and
+    DuCos both have ``utils`` / ``data``), so a second method would import the first one's modules.  Safe
+    here because each model has already predicted every frame by the time this runs.
+    """
+    tp = str(_bootstrap.REPO_ROOT / "third_party")
+    for name, mod in list(sys.modules.items()):
+        places = [getattr(mod, "__file__", None), *list(getattr(mod, "__path__", None) or [])]
+        if any(p and str(p).startswith(tp) for p in places):
+            del sys.modules[name]
+    sys.path[:] = [p for p in sys.path if not str(p).startswith(tp)]
 
 
 def input_panel(sample: dict, kind: str) -> np.ndarray:
@@ -137,6 +153,7 @@ def main() -> int:
 
         with contextlib.suppress(Exception):
             torch.cuda.empty_cache()
+        purge_third_party()
 
     out = Path(_bootstrap.REPO_ROOT) / "outputs" / "compare" / (args.tag or args.dataset)
     out.mkdir(parents=True, exist_ok=True)

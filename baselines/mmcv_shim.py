@@ -58,6 +58,11 @@ def install() -> bool:
 
     Returns True if the shim was installed, False if the real mmcv is available.
     """
+    if (
+        getattr(sys.modules.get("mmcv.ops"), "modulated_deform_conv2d", None)
+        is modulated_deform_conv2d
+    ):
+        return True  # already installed by an earlier load in this process
     try:
         from mmcv.ops import modulated_deform_conv2d as _  # noqa: F401
 
