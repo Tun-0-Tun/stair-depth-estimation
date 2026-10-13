@@ -36,6 +36,7 @@ from utils.config import load_config
 # dataset config -> what its GT is (our reading of the docs, not measured here)
 KINDS = {
     "minjiang": "сам датчик",
+    "ours": "сам датчик (Astra 2)",
     "rgbd_stair": "сам датчик, 8 бит",
     "void_stairs": "плотный reference (происхождение не проверено)",
     "zju_l5": "стереореконструкция",

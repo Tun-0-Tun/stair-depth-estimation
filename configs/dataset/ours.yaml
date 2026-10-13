@@ -1,0 +1,16 @@
+# Our Orbbec Astra 2 staircase captures (sample, 902 shots). No independent GT: the sensor's own
+# depth stands in as GT, so metrics are optimistic (like MinJiang) and meant for ranking methods.
+name: ours
+loader: ours
+root: ours/sample          # relative to $STAIR_DATA_ROOT
+split: test
+# (y0, y1, x0, x1) in RGB pixels: the 4:3 region the depth covers. null = whole 1080x1920 frame.
+crop: [12, 1068, 256, 1632]
+# half of the crop: both sides multiples of 16, and ~4x cheaper for every method. null = full crop.
+target_size: [528, 688]
+# stairs: [..]             # keep only these `stairs id`s (needs shots.xlsx + openpyxl)
+min_depth: 0.6             # Astra 2 datasheet range, as in docs/metrics_protocol.md
+max_depth: 8.0
+eval:
+  crop: none
+docs: docs/datasets.md

@@ -20,10 +20,8 @@ zero-range guard).  Differences absorbed here:
 4. ``third_party/dornet`` has a top-level ``utils.py`` and ``data/``: it goes on
    ``sys.path`` *after* the repo root so it cannot shadow our packages.
 
-Unverified: the RGB is min-max normalised as in the DuCos adapter, because
-DORNet's own ``nyu_dataloader.py`` only calls ``ToTensor`` on the pack's images
-and we have not checked what range ``test_images_v2.npy`` holds.  The NYU x4
-experiment is the check; if its RMSE is off, the RGB normalisation is the first suspect.
+Verified: ``dornet_nyuv2_x4`` reproduces the paper's NYU x4 RMSE (1.19 cm, Tab. 3) exactly,
+with the shim and the DuCos-style RGB min-max normalisation.
 """
 
 from __future__ import annotations

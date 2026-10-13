@@ -41,6 +41,7 @@ all three of us, because a split file is a list of paths.
 | Dataset | Role | Input | RGB | Depth | Depth encoding | GT source |
 |---|---|---|---|---|---|---|
 | [VOID](#void) | **primary stair benchmark** | real sparse (~1500 pts) | 640×480 | 640×480 | uint16 **/ 256** → m | dense reference |
+| [ours](#ours-astra-2-captures) | **our captures, stairs** | none (simulate) | 1920×1080 | 1080×1920 aligned (raw 1600×1200) | uint16 mm | ⚠ the sensor itself |
 | [MinJiang](#minjiang) | stair training / qualitative | none (simulate) | 640×480 | 640×480 | uint16 mm | ⚠ the sensor itself |
 | [NYUv2](#nyu-depth-v2) | general benchmark | none (simulate) | 640×480 | 640×480 | float m / normalised | filled Kinect |
 | [ZJU-L5](#zju-l5) | **DEPTHOR benchmark** | real 8×8 dToF | 640×480 | 8×8 zones | float m | stereo reconstruction |
@@ -88,6 +89,25 @@ for a sparsity ablation. Set `root:` accordingly.
 
 Intrinsics from `K.txt` land in `meta["intrinsics"]` as `[fx, fy, cx, cy]`; the
 Astra 2 degradation model needs them.
+
+## ours (Astra 2 captures)
+
+`root: ours/sample` · loader `ours` · config `configs/dataset/ours.yaml`
+
+Our own structured-light captures (sample of 902 shots on 42 staircases, `shots.xlsx` lists stairs id,
+view, illumination, occlusion). Flat folder, six PNGs per shot: `s<id>_rgb` (1920×1080),
+`s<id>_depth_aligned_to_rgb` (uint16 mm in the RGB frame; 0 outside the depth field of view and at
+holes), `_depth_raw` (1600×1200, unused), `_mask_aligned_valid`, `_mask_raw_valid` (unused),
+`_depth_colorized` (preview, **not depth**).
+
+* **No independent GT**: the sensor depth stands in as GT (like MinJiang), so metrics are
+  optimistic and only rank methods against each other. Run `scripts/audit_gt.py ours` for its noise.
+* The depth covers the central 4:3 part of the 16:9 frame; the loader crops to `crop: [12, 1068,
+  256, 1632]` and halves it with `target_size: [528, 688]`. Both are config keys (`null` = off).
+* Depth window 0.6-8 m (datasheet); the sample reaches 0.51 m and, in a few shots, ~18 m.
+* `dataset.stairs: [..]` keeps whole staircases, so a split never puts one staircase on both sides.
+
+---
 
 ## MinJiang
 

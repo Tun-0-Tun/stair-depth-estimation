@@ -1,7 +1,8 @@
 # DORNet x4 NYU v2 (synthetic bicubic protocol, the same one as ducos_nyuv2_x4).
-# Regression anchor: DORNet paper (arXiv:2410.11666) NYU x4 RMSE -- NOT filled in yet; take it
-# from the paper's NYU table after the first server run and compare within the SOW's +-10%.
-# RGB min-max normalisation mirrors the DuCos adapter and is unverified for DORNet.
+# Regression anchor: DORNet paper (arXiv:2410.11666) Tab. 3, synthetic NYU-v2 x4 RMSE = 1.19 cm.
+# Reproduced 2026-10-13 on the server, PIL bicubic LR, deformable conv via baselines/mmcv_shim.py
+# (deform=shim): 0.0119 m -> 1.19 cm -- exact. This also confirms the DuCos-style min-max
+# normalisation of RGB and depth is right for DORNet. If this moves, the SR protocol or the shim broke.
 defaults:
   - dataset: nyuv2
   - model: dornet
@@ -30,4 +31,4 @@ runtime:
   iters: 50
 tracking:
   backend: none
-notes: "mirrors the DuCos adapter (min/max from the LR input); rgb normalisation unverified"
+notes: "min/max from the LR input as in the DuCos adapter; deform=shim (torchvision DCNv2)"

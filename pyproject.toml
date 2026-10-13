@@ -55,6 +55,7 @@ baselines = [
     "setuptools<81",           # pytorch_wavelets imports pkg_resources, gone in setuptools 81
     "einops>=0.8",             # Prior Depth Anything, OMNI-DC
     "matplotlib>=3.7",         # prior_depth_anything/utils.py imports it at module level
+    "openpyxl>=3.1",           # data/loaders/ours.py reads shots.xlsx (optional metadata)
 #    "pytorch-msssim",          # WAVE Utilities/Evaluation.py imports ssim
 #    "tensorboardX",            # WAVE Utilities/Logger.py imports SummaryWriter
 ]

@@ -4,8 +4,11 @@
 # Measured 2026-10-12 on sinope (449 frames, border6): RMSE 0.178 m, AbsRel 0.0255, d1 0.984, 7.2 FPS --
 # worse than the bicubic floor (0.072 m) and WAVE (0.025 m). Checked and ruled out: global scale/shift
 # (affine fit: 0.180), prompt resolution (full-res prompt: same), RGB resolution (long side 1008: worse).
-# Even with the exact GT as prompt the small model keeps ~0.13 m on a synthetic scene: PromptDA does not
-# reproduce its prompt, so a clean bicubic prompt is not what it is for. Not an adapter bug as far as we found.
+# Adapter == upstream: on upstream's own example (vits, their load_image/load_depth) the adapter output is
+# identical to PromptDA.predict (max |diff| 0.0). The model is not prompt-exact even in-domain: its output
+# is 5 cm RMSE (2%) from its own 192x256 ARKit prompt there, and with the exact GT as prompt on a synthetic
+# scene (vits) it keeps 0.13 m. Why NYU is ~3x worse than that in-domain gap (Kinect, 640 px frames vs ~1000 px
+# training) is NOT established. The resize-to-multiple-of-14 path was not compared with upstream's on NYU.
 defaults:
   - dataset: nyuv2
   - model: promptda

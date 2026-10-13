@@ -675,6 +675,69 @@ def test_sensor_mask_survives_simulate_from_sensor(tmp_path):
     )[0]
     assert s["sensor_mask"].dtype == bool and s["sensor_mask"].shape == (16, 16)
     assert not s["sensor_mask"][:4].any() and s["sensor_mask"][4:].all()
-    assert (s["sparse_depth"] > 0).sum() <= 64, (
-        "the model input is the 64 zones, not the sensor map"
+    assert (
+        s["sparse_depth"] > 0
+    ).sum() <= 64, "the model input is the 64 zones, not the sensor map"
+
+
+def _write_ours_shot(root, sid, h=120, w=200, depth_rows=(10, 110), depth_cols=(30, 170)):
+    from PIL import Image
+
+    rgb = (np.random.default_rng(sid).random((h, w, 3)) * 255).astype(np.uint8)
+    depth = np.zeros((h, w), dtype=np.uint16)
+    y0, y1 = depth_rows
+    x0, x1 = depth_cols
+    depth[y0:y1, x0:x1] = 1500 + 10 * np.arange(x1 - x0)[None, :]  # a slanted wall, in mm
+    Image.fromarray(rgb).save(root / f"s{sid}_rgb.png")
+    Image.fromarray(depth).save(root / f"s{sid}_depth_aligned_to_rgb.png")
+    Image.fromarray(((depth > 0) * 255).astype(np.uint8)).save(
+        root / f"s{sid}_mask_aligned_valid.png"
     )
+
+
+def test_ours_loader_crops_to_the_depth_region_and_reads_millimetres(tmp_path):
+    """Metres, not mm; the empty margin is cropped away; ids sort numerically (s9 before s10)."""
+    pytest.importorskip("PIL")
+    for sid in (10, 9, 100):
+        _write_ours_shot(tmp_path, sid)
+
+    ds = build_dataset(
+        {"loader": "ours", "root": str(tmp_path), "crop": [10, 110, 30, 170], "min_depth": 0.6},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert [r["id"] for r in ds.records] == ["s9", "s10", "s100"]
+
+    s = ds[0]
+    validate_sample(s, "ours")
+    assert s["gt_depth"].shape == (100, 140) == s["rgb"].shape[:2]
+    assert float(s["gt_depth"].min()) > 1.4 and float(s["gt_depth"].max()) < 3.0, "mm -> m"
+    assert bool(s["mask"].all()), "after the crop every pixel has depth"
+    assert s["meta"]["gt_source"].startswith("sensor")
+
+    half = build_dataset(
+        {
+            "loader": "ours",
+            "root": str(tmp_path),
+            "crop": [10, 110, 30, 170],
+            "target_size": [50, 70],
+        },
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )[0]
+    assert half["gt_depth"].shape == half["rgb"].shape[:2] == (50, 70)
+
+
+def test_ours_loader_refuses_depth_in_another_frame(tmp_path):
+    """depth_raw is 4:3 and not registered to the RGB; feeding it would misalign every metric."""
+    from PIL import Image
+
+    pytest.importorskip("PIL")
+    _write_ours_shot(tmp_path, 1)
+    Image.fromarray(np.zeros((90, 120), dtype=np.uint16)).save(
+        tmp_path / "s1_depth_aligned_to_rgb.png"
+    )
+    ds = build_dataset(
+        {"loader": "ours", "root": str(tmp_path), "crop": None},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    with pytest.raises(ValueError, match="same frame"):
+        ds[0]

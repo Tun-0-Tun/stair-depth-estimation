@@ -2,6 +2,8 @@
 # Rough reference only, not a +-10% anchor: OMNI-DC's README lists NYU_500 RMSE 0.112 / REL 0.014
 # for OMNI-DC v1.1, but on the 654-frame h5 val set and with its own sampling; ours is the 449-frame
 # .mat test split. Compare Prior-DA to OMNI-DC here (same input), not either to a paper number.
+# Measured 2026-10-12 on sinope (449 frames, eigen crop, seed 0): AbsRel 0.0184, RMSE 0.1439 m, d1 0.9892, 7.8 FPS.
+# Same points as omni_dc_nyuv2_sparse500 (AbsRel 0.0143 / RMSE 0.1263 m).
 defaults:
   - dataset: nyuv2
   - model: prior_da
