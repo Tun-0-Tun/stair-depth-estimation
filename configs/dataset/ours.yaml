@@ -8,6 +8,7 @@ split: test
 crop: [12, 1068, 256, 1632]
 # half of the crop: both sides multiples of 16, and ~4x cheaper for every method. null = full crop.
 target_size: [528, 688]
+frame_stride: 1            # N = every N-th shot, an even spread over all stairs (902 shots; 9 -> ~100)
 # stairs: [..]             # keep only these `stairs id`s (needs shots.xlsx + openpyxl)
 min_depth: 0.6             # Astra 2 datasheet range, as in docs/metrics_protocol.md
 max_depth: 8.0

@@ -23,7 +23,8 @@ valid-region box of every 10th shot (y 6-52 .. 1068-1075, x 238-378 .. 1632-1659
 
 Per-shot metadata from ``shots.xlsx`` (``stairs_id``, ``view``, ``illumination``, ``occlusion``,
 ``comments``) lands in ``meta``; it needs ``openpyxl`` and is skipped with a warning when missing.
-``stairs=[...]`` keeps only those stairs, which is how to split without putting one staircase in
+``frame_stride=N`` takes every N-th shot (an even spread over all stairs, unlike ``max_samples``,
+which takes the first ones).  ``stairs=[...]`` keeps only those stairs, which is how to split without putting one staircase in
 both halves.
 """
 
@@ -96,8 +97,10 @@ class OursDataset(BaseDepthDataset):
         split: str = "test",
         stairs: Sequence[int] | None = None,
         crop: Sequence[int] | None = (12, 1068, 256, 1632),
+        frame_stride: int = 1,
         **kwargs: Any,
     ) -> None:
+        self.frame_stride = max(1, int(frame_stride))
         self.stairs = None if stairs is None else {int(s) for s in stairs}
         self.crop = None if crop is None else tuple(int(c) for c in crop)
         super().__init__(root=root, split=split, **kwargs)
@@ -133,7 +136,7 @@ class OursDataset(BaseDepthDataset):
                 }
             )
         records.sort(key=lambda r: r["num"])
-        return records
+        return records[:: self.frame_stride]
 
     def _load_raw(self, record: Mapping[str, Any]) -> Mapping[str, Any]:
         from PIL import Image

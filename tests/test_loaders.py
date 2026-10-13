@@ -706,6 +706,11 @@ def test_ours_loader_crops_to_the_depth_region_and_reads_millimetres(tmp_path):
         degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
     )
     assert [r["id"] for r in ds.records] == ["s9", "s10", "s100"]
+    strided = build_dataset(
+        {"loader": "ours", "root": str(tmp_path), "crop": None, "frame_stride": 2},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert [r["id"] for r in strided.records] == ["s9", "s100"]
 
     s = ds[0]
     validate_sample(s, "ours")
