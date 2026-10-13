@@ -56,7 +56,10 @@ def purge_third_party() -> None:
     """
     tp = str(_bootstrap.REPO_ROOT / "third_party")
     for name, mod in list(sys.modules.items()):
-        places = [getattr(mod, "__file__", None), *list(getattr(mod, "__path__", None) or [])]
+        try:  # a few modules (torch.classes) have a __path__ that is not a list
+            places = [getattr(mod, "__file__", None), *list(getattr(mod, "__path__", None) or [])]
+        except TypeError:
+            continue
         if any(p and str(p).startswith(tp) for p in places):
             del sys.modules[name]
     sys.path[:] = [p for p in sys.path if not str(p).startswith(tp)]
