@@ -11,9 +11,11 @@ are written so a human can accept or reject by eye.  Three steps, each resumable
     uv run --group baselines python scripts/find_hypersim_stairs.py sheets --top 120
     # 3. write the ranks you accepted as a split the hypersim loader understands
     uv run --group baselines python scripts/find_hypersim_stairs.py split --keep 1 2 5-9 14
+    # ... or just the most likely ones, under another name (rank 1 = highest CLIP score)
+    uv run --group baselines python scripts/find_hypersim_stairs.py split --keep 1-30 --name top30
 
-The split lands in ``data/splits/hypersim/stairs.json``; use it with
-``dataset.split_file=hypersim/stairs.json`` (frame_stride must stay 1 or the ids will not exist).
+The split lands in ``data/splits/hypersim/<name>.json`` (``stairs`` unless ``--name``); use it with
+``dataset.split_file=hypersim/<name>.json`` (frame_stride must stay 1 or the ids will not exist).
 CLIP only proposes: it also likes balconies and ladders, and misses stairs seen from far away.
 """
 
@@ -31,7 +33,7 @@ from data.loaders import build_dataset
 from utils.config import load_config
 
 OUT = _bootstrap.REPO_ROOT / "outputs" / "hypersim_stairs"
-SPLIT = _bootstrap.REPO_ROOT / "data" / "splits" / "hypersim" / "stairs.json"
+SPLITS = _bootstrap.REPO_ROOT / "data" / "splits" / "hypersim"
 MODEL = "openai/clip-vit-base-patch16"
 STAIRS = [
     "a photo of a staircase",
@@ -184,10 +186,14 @@ def cmd_split(args: argparse.Namespace) -> None:
     if missing:
         raise SystemExit(f"no such rank(s): {missing}; candidates have 1..{max(by_rank)}")
     ids = sorted(by_rank[k] for k in keep)
-    SPLIT.parent.mkdir(parents=True, exist_ok=True)
-    SPLIT.write_text(json.dumps({"dataset": "hypersim", "split": "stairs", "ids": ids}, indent=1))
+    path = SPLITS / f"{args.name}.json"
+    if path.exists() and not args.force:
+        raise SystemExit(f"{path} exists; pick another --name or pass --force to overwrite it")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"dataset": "hypersim", "split": args.name, "ids": ids}, indent=1))
     scenes = {i.split("/")[0] for i in ids}
-    print(f"[split] {len(ids)} frames from {len(scenes)} scenes -> {SPLIT}")
+    print(f"[split] {len(ids)} frames from {len(scenes)} scenes -> {path}")
+    print(f"        use it with: --set dataset.split_file=hypersim/{args.name}.json")
 
 
 def main() -> int:
@@ -203,7 +209,13 @@ def main() -> int:
     c.add_argument("--per-traj", type=int, default=2)
     c.add_argument("--gap", type=int, default=15, help="min frame distance within a trajectory")
     p = sub.add_parser("split", help="write the accepted ranks as a split file")
-    p.add_argument("--keep", nargs="+", required=True, help="ranks, e.g. 1 2 5-9 14")
+    p.add_argument(
+        "--keep", nargs="+", required=True, help="ranks, e.g. 1 2 5-9 14, or 1-30 for the top 30"
+    )
+    p.add_argument(
+        "--name", default="stairs", help="split name -> data/splits/hypersim/<name>.json"
+    )
+    p.add_argument("--force", action="store_true", help="overwrite an existing split of that name")
     args = ap.parse_args()
     {"score": cmd_score, "sheets": cmd_sheets, "split": cmd_split}[args.cmd](args)
     return 0
