@@ -11,8 +11,9 @@
     uv run --group baselines python scripts/compare_methods.py --dataset void_stairs \
         --methods dornet:bicubic_x4 --set dataset.simulate_from=gt
 
-A method is ``<model config>:<degradation config>`` (``configs/model``, ``configs/degradation``) and runs
-with that model's default checkpoint.  One PNG per frame:
+A method is ``<model config>:<degradation config>[@lr_scale]`` (``configs/model``, ``configs/degradation``) and
+runs with that model's default checkpoint.  For a degradation without a scale (``astra2_uncalibrated``) SR
+methods get its output hole-filled and downsampled by the model's own scale (or ``@4`` / ``@8``).  One PNG per frame:
 
     row 1    RGB | GT | one prediction per method; each title = method, input, AbsRel / RMSE / delta1 here
     row 2    what each method received, under its prediction (500 points are dilated so they are visible);
@@ -146,17 +147,35 @@ def main() -> int:
         if bad:
             raise SystemExit(f"--set only takes dataset.* keys, got {bad}")
         dataset_cfg = apply_overrides({"dataset": dataset_cfg}, args.set)["dataset"]
-    specs = [m.split(":", 1) for m in args.methods]
-    if any(len(s) != 2 for s in specs):
-        raise SystemExit("every method must look like model:degradation, e.g. dornet:bicubic_x4")
+    # method = model:degradation[@lr_scale]. A degradation that has no scale of its own (astra2_*, ...)
+    # hands SR methods a hole-filled map downsampled by the dataset's lr_scale; that must match the
+    # weights (x4 / x8), so it is taken from the model config unless given with @.
+    specs, deg_of = [], {}  # specs: (model, key); deg_of: key -> (degradation, lr_scale | None)
+    for m in args.methods:
+        try:
+            name, rest = m.split(":", 1)
+        except ValueError:
+            raise SystemExit(
+                "every method must look like model:degradation[@scale], e.g. dornet:bicubic_x4"
+            ) from None
+        deg, _, at = rest.partition("@")
+        dcfg = load_config("degradation", deg)
+        mscale = dict(load_config("model", name)).get("scale")
+        if at and "scale" in dcfg:
+            raise SystemExit(f"{m}: {deg} already fixes the scale (x{dcfg['scale']}); drop @{at}")
+        lr_scale = int(at) if at else (int(mscale) if mscale and "scale" not in dcfg else None)
+        key = f"{deg}@{lr_scale}" if lr_scale else deg
+        specs.append((name, key))
+        deg_of[key] = (deg, lr_scale)
 
-    # one dataset per distinct degradation: same records, same seeded inputs
+    # one dataset per distinct input: same records, same seeded inputs
     datasets = {}
-    for _, deg in specs:
-        if deg not in datasets:
-            datasets[deg] = build_dataset(
-                dict(dataset_cfg),
-                degradation=build_degradation(dict(load_config("degradation", deg))),
+    for _, key in specs:
+        if key not in datasets:
+            deg, lr_scale = deg_of[key]
+            cfg_d = dict(dataset_cfg, **({"lr_scale": lr_scale} if lr_scale else {}))
+            datasets[key] = build_dataset(
+                cfg_d, degradation=build_degradation(dict(load_config("degradation", deg)))
             )
     ref = next(iter(datasets.values()))
     frames = pick_frames(ref, args.frames, args.n)
@@ -168,7 +187,7 @@ def main() -> int:
     results = []  # (model, degradation, kind, [pred per frame], [metrics per frame])
     for name, deg in specs:
         cfg = dict(load_config("model", name))
-        dcfg = dict(load_config("degradation", deg))
+        dcfg = dict(load_config("degradation", deg_of[deg][0]))
         if "scale" in cfg and "scale" in dcfg and int(cfg["scale"]) != int(dcfg["scale"]):
             raise SystemExit(
                 f"{name}: model scale {cfg['scale']} but degradation {deg} is x{dcfg['scale']}; "
