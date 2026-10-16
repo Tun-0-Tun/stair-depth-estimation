@@ -4,6 +4,12 @@
     uv run --group baselines python scripts/compare_methods.py --dataset ours --frames s100 s304 s507
     uv run --group baselines python scripts/compare_methods.py --dataset ours -n 6 \
         --methods prior_da:random_sparse_500 omni_dc:random_sparse_500 dornet:bicubic_x4
+    # a dataset with a real sensor input: degradation "none" (the dataset's own input is used)
+    uv run --group baselines python scripts/compare_methods.py --dataset void_stairs -n 6 \
+        --methods prior_da:none omni_dc:none nn_fill:none
+    # ... or throw that input away and simulate one from the GT
+    uv run --group baselines python scripts/compare_methods.py --dataset void_stairs \
+        --methods dornet:bicubic_x4 --set dataset.simulate_from=gt
 
 A method is ``<model config>:<degradation config>`` (``configs/model``, ``configs/degradation``) and runs
 with that model's default checkpoint.  One PNG per frame:
@@ -37,7 +43,7 @@ from baselines.base import model_depth_range
 from data.degradation import build_degradation
 from data.loaders import build_dataset
 from metrics.depth_metrics import MetricConfig, compute_depth_metrics
-from utils.config import load_config
+from utils.config import apply_overrides, load_config
 from utils.misc import resize_depth, set_seed
 
 DEFAULT_METHODS = (
@@ -110,6 +116,13 @@ def main() -> int:
         "--err", type=float, default=0.25, help="error colour range, relative (0.25 = +-25%%)"
     )
     ap.add_argument(
+        "--set",
+        nargs="*",
+        default=[],
+        metavar="dataset.key=value",
+        help="override dataset options, e.g. dataset.simulate_from=gt dataset.frame_stride=20",
+    )
+    ap.add_argument(
         "--no-inputs",
         dest="inputs",
         action="store_false",
@@ -128,6 +141,11 @@ def main() -> int:
 
     set_seed(0)
     dataset_cfg = dict(load_config("dataset", args.dataset))
+    if args.set:
+        bad = [o for o in args.set if not o.startswith("dataset.")]
+        if bad:
+            raise SystemExit(f"--set only takes dataset.* keys, got {bad}")
+        dataset_cfg = apply_overrides({"dataset": dataset_cfg}, args.set)["dataset"]
     specs = [m.split(":", 1) for m in args.methods]
     if any(len(s) != 2 for s in specs):
         raise SystemExit("every method must look like model:degradation, e.g. dornet:bicubic_x4")
