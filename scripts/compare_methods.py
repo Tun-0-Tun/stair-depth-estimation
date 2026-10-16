@@ -183,7 +183,10 @@ def main() -> int:
             preds.append(p)
             mets.append(compute_depth_metrics(p, s["gt_depth"], s["mask"], metric_cfg))
         results.append((name, deg, model.input_modality, preds, mets))
-        print(f"[{name}:{deg}] mean absrel {np.mean([m['absrel'] for m in mets]):.4f}")
+        ok = [m["absrel"] for m in mets if m["n_valid"] > 0]
+        print(
+            f"[{name}:{deg}] mean absrel {np.mean(ok) if ok else float('nan'):.4f} over {len(ok)}/{len(mets)} frames"
+        )
         del model
         gc.collect()
         import contextlib
@@ -193,6 +196,13 @@ def main() -> int:
         with contextlib.suppress(Exception):
             torch.cuda.empty_cache()
         purge_third_party()
+
+    empty = [ids[i] for i, m in enumerate(results[0][4]) if m["n_valid"] == 0]
+    if empty:
+        print(
+            f"[warn] no GT pixel inside the {metric_cfg.min_depth:g}-{metric_cfg.max_depth:g} m window "
+            f"in {len(empty)} frame(s), scored as nan and left out of the means: {empty}"
+        )
 
     out = Path(_bootstrap.REPO_ROOT) / "outputs" / "compare" / (args.tag or args.dataset)
     out.mkdir(parents=True, exist_ok=True)
@@ -230,7 +240,8 @@ def main() -> int:
                 pred = np.where(s["mask"], pred, np.nan)
             axes[0, col].imshow(pred, cmap=cmap, vmin=vmin, vmax=vmax)
             axes[0, col].set_title(
-                f"{name} [{deg}]\nAbsRel {m['absrel']:.3f}  RMSE {m['rmse']:.3f}  δ1 {m['delta1']:.3f}",
+                f"{name} [{deg}]\nAbsRel {m['absrel']:.3f}  RMSE {m['rmse']:.3f}  δ1 {m['delta1']:.3f}"
+                + ("" if m["n_valid"] > 0 else "\n(нет GT в окне глубины)"),
                 fontsize=8,
             )
             row = 1
@@ -275,9 +286,10 @@ def main() -> int:
             fontsize=9,
         )
         fig.tight_layout(rect=(0, 0, 1, 0.94))
-        fig.savefig(out / f"{sid}.png", dpi=80)
+        fname = sid.replace("/", "__") + ".png"  # ids like ai_001_003/cam_00/0012 contain slashes
+        fig.savefig(out / fname, dpi=80)
         plt.close(fig)
-        print(f"  {out / (sid + '.png')}")
+        print(f"  {out / fname}")
 
     with (out / "metrics.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows_csv[0]))
