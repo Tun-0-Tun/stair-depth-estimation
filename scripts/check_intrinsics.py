@@ -35,7 +35,7 @@ import numpy as np
 import yaml
 
 from utils.misc import REPO_ROOT, data_root
-from utils.rosbag_min import is_ros_bag, parse_camera_info, read_bag
+from utils.rosbag_min import is_ros_bag, parse_camera_info, parse_ob_disparity, parse_ob_profile, read_bag
 
 
 # ------------------------------------------------------------------ convert
@@ -176,17 +176,38 @@ def inspect(a) -> None:
             n = info["counts_in_scanned_chunks"].get(c["topic"], 0)
             print(f"  {c['topic']:<55} {c['type']:<35} msgs(first chunks)={n}")
             entry["topics"].append([c["topic"], c["type"]])
-            if c["type"].endswith("CameraInfo") and c["topic"] in info["first"]:
-                try:
-                    ci = parse_camera_info(info["first"][c["topic"]])
-                except Exception as e:  # noqa: BLE001
-                    print("    cannot decode:", e)
+            if c["topic"] not in info["first"]:
+                continue
+            msg = info["first"][c["topic"]]
+            try:
+                if c["type"].endswith("CameraInfo"):
+                    ci = parse_camera_info(msg)
+                    kind = "color" if any(w in c["topic"].lower() for w in ("color", "rgb")) else "other"
+                elif c["type"].endswith("OBStreamProfileInfo"):
+                    p = parse_ob_profile(msg)
+                    fx, fy, cx, cy = p["K4"]
+                    ci = {"width": p["width"], "height": p["height"], "fx": fx, "fy": fy, "cx": cx, "cy": cy, "D": p["D"],
+                          "distortion_model": f"ob:{p['distortion_model']}", "stream_type": p["stream_type"],
+                          "rotation": p["rotation"], "translation": p["translation"], "fps": p["fps"]}
+                    kind = {2: "color", 3: "depth"}.get(p["stream_type"], f"type{p['stream_type']}")
+                    if not (0.3 < cx / p["width"] < 0.7 and 0.3 < cy / p["height"] < 0.7):
+                        print("    WARNING: cameraIntrinsic order is not fx,fy,cx,cy (cx,cy not near the image centre):", p["K4"])
+                elif c["type"].endswith("OBDisparityParam"):
+                    print("    -> disparity engine:", parse_ob_disparity(msg))
                     continue
-                entry["camera_info"][c["topic"]] = ci
-                print(f"    -> {ci['width']}x{ci['height']} fx={ci['fx']:.3f} fy={ci['fy']:.3f} cx={ci['cx']:.3f} "
-                      f"cy={ci['cy']:.3f} model={ci['distortion_model']} D={np.round(ci['D'], 5).tolist()}")
-                if any(s in c["topic"].lower() for s in ("color", "rgb")):
-                    rows.append((Path(bag).name, ci))
+                else:
+                    continue
+            except Exception as e:  # noqa: BLE001
+                print("    cannot decode:", type(e).__name__, e)
+                continue
+            ci["kind"] = kind
+            entry["camera_info"][c["topic"]] = ci
+            print(f"    -> [{kind}] {ci['width']}x{ci['height']} fx={ci['fx']:.3f} fy={ci['fy']:.3f} cx={ci['cx']:.3f} "
+                  f"cy={ci['cy']:.3f} model={ci['distortion_model']} D={np.round(ci['D'], 5).tolist()}")
+            if "rotation" in ci:
+                print(f"       extrinsics (to the other sensor): R={np.round(ci['rotation'], 4).tolist()} t={np.round(ci['translation'], 4).tolist()}")
+            if kind == "color":
+                rows.append((Path(bag).name, ci))
         if not entry["camera_info"]:
             print("  no sensor_msgs/CameraInfo topic. message definitions that mention intrinsics:")
             for c in info["connections"].values():
@@ -194,7 +215,7 @@ def inspect(a) -> None:
                     print(f"  [{c['topic']}] {c['type']}\n{c['definition'][:600]}")
         report.append(entry)
     if rows:
-        print("\n=== RGB camera_info across bags (same camera => identical numbers)")
+        print("\n=== RGB intrinsics across bags (same camera => identical numbers)")
         for name, ci in rows:
             print(f"  {name:<40} {ci['width']}x{ci['height']}  fx={ci['fx']:.3f} fy={ci['fy']:.3f} cx={ci['cx']:.3f} cy={ci['cy']:.3f}")
         K = np.array([[c["fx"], c["fy"], c["cx"], c["cy"]] for _, c in rows])

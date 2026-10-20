@@ -42,3 +42,25 @@ def test_read_bag_and_camera_info(tmp_path, comp):
     ci = parse_camera_info(r["first"]["/cam/color/camera_info"])
     assert (ci["width"], ci["height"]) == (1920, 1080)
     assert ci["fx"] == 1050.5 and ci["fy"] == 1049.0 and ci["cx"] == 960.2 and ci["cy"] == 541.1 and len(ci["D"]) == 5
+
+
+def test_ob_profile_and_late_latched_message(tmp_path):
+    from utils.rosbag_min import parse_ob_profile
+
+    hdr = struct.pack("<III", 0, 1, 2) + struct.pack("<I", 3) + b"cam"
+    prof = (hdr + struct.pack("<BB", 2, 1) + struct.pack("<9f", *[1, 0, 0, 0, 1, 0, 0, 0, 1]) + struct.pack("<3f", 0.1, 0, 0)
+            + struct.pack("<HHH", 1920, 1080, 30) + struct.pack("<4f", 1050.5, 1049.0, 960.2, 541.1)
+            + struct.pack("<8f", *[0.1] * 8) + struct.pack("<B", 3))
+    conn = lambda c, t, ty: _rec(_f(op=b"\x07", conn=struct.pack("<I", c), topic=t), _f(type=ty, message_definition="x"))  # noqa: E731
+    msg = lambda c, d: _rec(_f(op=b"\x02", conn=struct.pack("<I", c), time=b"\0" * 8), d)  # noqa: E731
+    chunks = [conn(0, "/cam/profile", "custom_msg/OBStreamProfileInfo") + conn(1, "/cam/img", "sensor_msgs/Image") + msg(1, b"x" * 8)]
+    chunks += [msg(1, b"y" * 8)] * 3 + [msg(0, prof)]  # the profile only appears in the 5th chunk
+    bag = MAGIC
+    for c in chunks:
+        bag += _rec(_f(op=b"\x05", compression="none", size=len(c)), c)
+    p = tmp_path / "ob.bag"
+    p.write_bytes(bag)
+    r = read_bag(p, max_chunks=2)
+    o = parse_ob_profile(r["first"]["/cam/profile"])
+    assert o["stream_type"] == 2 and (o["width"], o["height"]) == (1920, 1080)
+    assert o["K4"][0] == pytest.approx(1050.5) and o["K4"][3] == pytest.approx(541.1) and o["translation"][0] == pytest.approx(0.1)

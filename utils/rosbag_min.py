@@ -42,8 +42,12 @@ def is_ros_bag(path) -> bool:
         return f.read(len(MAGIC)) == MAGIC
 
 
-def read_bag(path, max_chunks: int = 20) -> dict[str, Any]:
-    """``{"connections": {conn: {topic, type, definition}}, "first": {topic: bytes}, "counts": {topic: n_seen}, ...}``"""
+def read_bag(path, max_chunks: int = 20, want: tuple[str, ...] = ("CameraInfo", "OBStreamProfileInfo", "OBDisparityParam")) -> dict[str, Any]:
+    """``{"connections": {conn: {topic, type, definition}}, "first": {topic: bytes}, "counts": {topic: n_seen}, ...}``
+
+    After ``max_chunks`` chunks the scan goes on (chunk by chunk, early exit) only while a topic whose type
+    ends with one of ``want`` has no message yet -- latched messages such as stream profiles may sit anywhere.
+    """
     conns: dict[int, dict] = {}
     first: dict[str, bytes] = {}
     counts: dict[str, int] = {}
@@ -61,15 +65,19 @@ def read_bag(path, max_chunks: int = 20) -> dict[str, Any]:
             op = h.get("op", b"\x00")[0]
             if op == 5:  # chunk
                 n_chunks += 1
-                if n_chunks > max_chunks:
+                if n_chunks > max_chunks and all(
+                    c["topic"] in first for c in conns.values() if c["type"].endswith(want)
+                ):
                     f.seek(dl, 1)
                     continue
                 data, comp = f.read(dl), h.get("compression", b"none").decode()
                 if comp == "bz2":
                     data = bz2.decompress(data)
                 elif comp == "lz4":
-                    import lz4.frame
-
+                    try:
+                        import lz4.frame
+                    except ImportError:
+                        raise ImportError("this bag has lz4 chunks: run with `uv run --with lz4 ...` (or pip install lz4)") from None
                     data = lz4.frame.decompress(data)
                 elif comp != "none":
                     raise ValueError(f"unsupported chunk compression {comp!r}")
@@ -110,3 +118,38 @@ def parse_camera_info(msg: bytes) -> dict[str, Any]:
     P = struct.unpack_from("<12d", msg, i)
     return {"width": w, "height": h, "distortion_model": model, "D": D,
             "fx": Km[0], "fy": Km[4], "cx": Km[2], "cy": Km[5], "P": list(P)}
+
+
+def _hdr(msg: bytes) -> int:
+    (n,) = struct.unpack_from("<I", msg, 12)
+    return 16 + n
+
+
+def parse_ob_profile(msg: bytes) -> dict[str, Any]:
+    """custom_msg/OBStreamProfileInfo (Orbbec SDK recorder): intrinsics + extrinsics of one stream.
+
+    Layout: Header, u8 streamType (2 = colour, 3 = depth), u8 format, f32[9] rotation, f32[3] translation,
+    u16 width, u16 height, u16 fps, f32[4] cameraIntrinsic (assumed fx, fy, cx, cy -- checked by the
+    caller against width/height), f32[8] cameraDistortion, u8 distortionModel.
+    """
+    i = _hdr(msg)
+    st, fmt = struct.unpack_from("<BB", msg, i); i += 2
+    R = struct.unpack_from("<9f", msg, i); i += 36
+    t = struct.unpack_from("<3f", msg, i); i += 12
+    w, h, fps = struct.unpack_from("<HHH", msg, i); i += 6
+    k = struct.unpack_from("<4f", msg, i); i += 16
+    d = struct.unpack_from("<8f", msg, i); i += 32
+    (dm,) = struct.unpack_from("<B", msg, i)
+    return {"stream_type": st, "format": fmt, "width": w, "height": h, "fps": fps, "K4": list(k),
+            "D": list(d), "distortion_model": dm, "rotation": list(R), "translation": list(t)}
+
+
+def parse_ob_disparity(msg: bytes) -> dict[str, Any]:
+    """custom_msg/OBDisparityParam: zpd, zpps, baseline, fx, ... of the stereo depth engine."""
+    i = _hdr(msg)
+    zpd, zpps = struct.unpack_from("<dd", msg, i); i += 16
+    (baseline,) = struct.unpack_from("<f", msg, i); i += 4
+    (fx,) = struct.unpack_from("<d", msg, i); i += 8
+    bit, = struct.unpack_from("<B", msg, i); i += 1
+    unit, mind = struct.unpack_from("<ff", msg, i)
+    return {"zpd": zpd, "zpps": zpps, "baseline": baseline, "fx": fx, "bitSize": bit, "unit": unit, "minDisparity": mind}
