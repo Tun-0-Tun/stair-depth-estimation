@@ -1,0 +1,4 @@
+base: _base.yaml
+# row 5: run_ablations.py overrides model.fusion / loss.edge_weight with the best of rows 2*/3* (chosen on val)
+model: {fusion: stairnetv2_orig}
+loss: {edge_weight: gaussian}

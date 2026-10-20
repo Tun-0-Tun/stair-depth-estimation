@@ -21,3 +21,9 @@
 [submodule "third_party/dornet"]
 	path = third_party/dornet
 	url = https://github.com/yanzq95/DORNet
+[submodule "third_party/StairNet-DepthOut"]
+	path = third_party/StairNet-DepthOut
+	url = https://github.com/MrChenWang/StairNet-DepthOut.git
+[submodule "third_party/StairNet-DepthIn"]
+	path = third_party/StairNet-DepthIn
+	url = https://github.com/MrChenWang/StairNet-DepthIn.git

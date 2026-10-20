@@ -1,0 +1,5 @@
+base: _base.yaml
+method: baseline
+baseline:
+  model: depthor
+  overrides: {}

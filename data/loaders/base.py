@@ -318,7 +318,14 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
                     f"[{self.info.name}] sample {idx} has no degraded input and no degradation "
                     "model was configured."
                 )
-            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx)
+            ctx = (
+                {"rgb": rgb, "sample_id": str(raw.get("sample_id", idx))}
+                if getattr(self.degradation, "needs_context", False)
+                else {}
+            )
+            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx, **(
+                {"context": ctx} if ctx else {}
+            ))
             sparse = deg["sparse_depth"]
             lr = deg.get("lr_depth")
             modality = "synthetic"

@@ -1,0 +1,46 @@
+# A' experiment base. One file per ablation row inherits it (`base: _base.yaml`) and overrides a few keys.
+# Run:  python scripts/train_aprime.py configs/aprime/a2_fusion_orig.yaml [key.sub=value ...]
+dataset: ours               # configs/dataset/ours.yaml (crop, target_size, intrinsics K, depth range)
+seed: 0
+device: auto
+data:
+  split_file: data/splits/ours_seed0.json   # made by scripts/make_splits.py (split by staircase)
+  stair_cache: ours/stairnet_cache          # relative to $STAIR_DATA_ROOT; scripts/stairnet_cache.py
+  mask_source: stairnet_official            # stairnet_official | none  (segmenter fallback not needed: DepthOut has segmentation)
+  conf_thr: 0.7                             # StairNet softmax confidence below this = ignore for stair losses
+  fill: nearest                             # holes in the LR input: nearest | zero
+degradation:                                # data/degradation/astra_hard.py; same for A' and baselines
+  type: astra_hard
+  severity: strong                          # light | medium | strong
+  edge_holes: true
+  glare_holes: true
+  blob_holes: true
+  depth_noise: true
+  flying: true
+  stair_bg_boundary: true
+  lr_min_frac: 0.5
+model:
+  scale: 8                                  # WAVE x8 (HyperSim) checkpoint; 528x688 is divisible by 8 and 16
+  num_feats: 48
+  checkpoint: checkpoints/wave/NYU8x.pth
+  use_validity_channel: true
+  fusion: none                              # none | stairnetv2_orig | channel | spatial
+  fusion_levels: [3, 4]                     # structure_block3/4 = the two finest levels
+loss:
+  edge_weight: none                         # none | binary | gaussian
+  alpha: 2.0
+  edge_band_px: 6
+  stair_bg_boundary: true
+  use_planar_loss: false                    # needs intrinsics K in configs/dataset/ours.yaml
+  beta: 0.1
+  planar_warmup_steps: 1000
+  huber_delta: 0.1
+  normal_source: gt                         # gt (smoothed) | pred (detached)
+  min_tread_px: 500
+train:
+  epochs: 30
+  batch_size: 2
+  lr: 2.0e-5                                # pretrained WAVE weights
+  lr_new: 1.0e-4                            # new fusion modules + validity conv
+  workers: 4
+  val_every: 1

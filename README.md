@@ -142,6 +142,11 @@ than quietly returning v1 numbers under a ++ label.
 by `baselines/bpops_shim.py` (checked against BP-Net's kernel). Runs are tagged
 `bpops=shim` or `bpops=cuda`.
 
+## A' (our method)
+
+WAVE + validity channel + selective fusion + stair-aware losses: [docs/aprime.md](docs/aprime.md), third-party
+attribution (StairNet, CC BY-NC 3.0) included there.
+
 ## House rules
 
 1. **One metric implementation** — a second AbsRel or RMSE anywhere, notebooks

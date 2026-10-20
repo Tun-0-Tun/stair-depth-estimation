@@ -15,3 +15,8 @@ max_depth: 8.0
 eval:
   crop: none
 docs: docs/datasets.md
+# Intrinsics (fx, fy, cx, cy) of the RGB camera IN THE 528x688 FRAME (after crop + target_size).
+# null = not known yet -> every K-dependent component (planar loss, step-geometry metric) is
+# disabled with a warning. Source: the raw .bag captures (in archives under raw/) contain the camera intrinsics
+# (per user, 2026-10-19) -- read them for the RGB stream, then rescale for crop [12,1068,256,1632] + the 0.5 resize. Fill in with the source in a comment, e.g. "Orbbec SDK, serial ...".
+intrinsics: null

@@ -1,0 +1,14 @@
+# Rows of the ablation table, in order. `kind: train` = fine-tune then evaluate; `eval` = evaluate only.
+# `requires: intrinsics` rows are skipped until data.intrinsics is set.
+rows:
+  - {id: "0",  name: "WAVE zero-shot",                       config: r0_wave_zeroshot.yaml, kind: eval}
+  - {id: "1",  name: "WAVE + validity channel (fine-tuned)", config: a1_validity.yaml,      kind: train}
+  - {id: "2",  name: "+ fusion=stairnetv2_orig",             config: a2_fusion_orig.yaml,   kind: train}
+  - {id: "2b", name: "+ fusion=channel",                     config: a2b_fusion_channel.yaml, kind: train}
+  - {id: "2c", name: "+ fusion=spatial",                     config: a2c_fusion_spatial.yaml, kind: train}
+  - {id: "3a", name: "+ edge_weight=binary",                 config: a3a_edge_binary.yaml,  kind: train}
+  - {id: "3b", name: "+ edge_weight=gaussian",               config: a3b_edge_gaussian.yaml, kind: train}
+  - {id: "4",  name: "+ planar loss",                        config: a4_planar.yaml,        kind: train, requires: intrinsics}
+  - {id: "5",  name: "all (best of 2*, 3*)",                 config: a5_all.yaml,           kind: train, combine: true}
+  - {id: "DuCos",  name: "DuCos",   config: r_ducos.yaml,   kind: eval}
+  - {id: "DEPTHOR", name: "DEPTHOR v1", config: r_depthor.yaml, kind: eval}

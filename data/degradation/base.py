@@ -63,12 +63,18 @@ class BaseDegradation(abc.ABC):
 
     key: str = "base"
 
-    def __call__(self, gt_depth: np.ndarray, seed: int | None = None) -> dict[str, Any]:
+    #: True -> ``apply`` takes a third ``context`` argument (``rgb``, ``sample_id``) that the
+    #: loader supplies. Only degradations that need the image (glare holes) set it.
+    needs_context: bool = False
+
+    def __call__(
+        self, gt_depth: np.ndarray, seed: int | None = None, context: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
         gt = np.asarray(gt_depth, dtype=np.float32)
         if gt.ndim != 2:
             raise ValueError(f"gt_depth must be (H, W), got {gt.shape}")
         rng = np.random.default_rng(seed)
-        out = dict(self.apply(gt, rng))
+        out = dict(self.apply(gt, rng, context) if self.needs_context else self.apply(gt, rng))
         sparse = np.asarray(out.get("sparse_depth"), dtype=np.float32)
         sparse = np.nan_to_num(sparse, nan=0.0, posinf=0.0, neginf=0.0)
         sparse[sparse < 0] = 0.0
