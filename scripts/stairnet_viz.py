@@ -22,7 +22,7 @@ import yaml
 from data.degradation import IdentityDegradation
 from data.loaders import build_dataset
 from data.stairnet.cache import cache_dir, load_masks
-from data.stairnet.edges import build_edge_maps
+from data.stairnet.edges import build_edge_maps, clean_masks
 from utils.misc import REPO_ROOT, data_root
 
 
@@ -34,6 +34,7 @@ def main() -> None:
     ap.add_argument("--mode", default="gaussian")
     ap.add_argument("--band-px", type=float, default=6)
     ap.add_argument("--conf-thr", type=float, default=0.7)
+    ap.add_argument("--clean", action=argparse.BooleanOptionalAction, default=True, help="show masks after clean_masks (what training uses)")
     a = ap.parse_args()
     cfg = yaml.safe_load((REPO_ROOT / "configs/dataset/ours.yaml").read_text())
     ds = build_dataset({k: cfg[k] for k in ("name", "loader", "root", "crop", "target_size")},
@@ -52,6 +53,9 @@ def main() -> None:
         if m is None:
             print("no cache for", sid)
             continue
+        raw_cls = m["cls"]
+        m["cls"] = clean_masks(raw_cls) if a.clean else raw_cls
+        frac_raw, frac = float((raw_cls > 0).mean()), float((m["cls"] > 0).mean())
         img = (s["rgb"][..., ::-1] * 255).astype(np.uint8).copy()  # BGR
         ov = img.copy()
         ov[m["cls"] == 1] = (0, 200, 0)
@@ -64,7 +68,7 @@ def main() -> None:
         cv2.drawContours(img, cnt, -1, (0, 255, 255), 1)
         for c, x1, y1, x2, y2, _ in m["lines"]:
             cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)), (255, 0, 0) if c == 0 else (255, 0, 255), 2)
-        cv2.putText(img, f"{sid} stairs {s['meta'].get('stairs_id')}", (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
+        cv2.putText(img, f"{sid} stairs {s['meta'].get('stairs_id')} stair% raw {100 * frac_raw:.0f} clean {100 * frac:.0f}" + ("" if frac else " NO STAIRS"), (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1)
         cv2.imwrite(str(out / f"{sid}.png"), img)
         tiles.append(cv2.resize(img, (344, 264)))
     if tiles:

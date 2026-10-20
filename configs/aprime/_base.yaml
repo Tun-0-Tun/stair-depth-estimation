@@ -7,6 +7,7 @@ data:
   split_file: data/splits/ours_seed0.json   # made by scripts/make_splits.py (split by staircase)
   stair_cache: ours/stairnet_cache          # relative to $STAIR_DATA_ROOT; scripts/stairnet_cache.py
   mask_source: stairnet_official            # stairnet_official | none  (segmenter fallback not needed: DepthOut has segmentation)
+  mask_clean: {min_area: 1500, open_px: 3, min_stair_frac: 0.05, top_k: 0}   # suppress StairNet false positives on non-stair scenes
   conf_thr: 0.7                             # StairNet softmax confidence below this = ignore for stair losses
   fill: nearest                             # holes in the LR input: nearest | zero
 degradation:                                # data/degradation/astra_hard.py; same for A' and baselines
@@ -37,6 +38,9 @@ loss:
   huber_delta: 0.1
   normal_source: gt                         # gt (smoothed) | pred (detached)
   min_tread_px: 500
+  gate_cos_tread: 0.85                      # planar loss trusts a tread label only where the GT normal agrees (|n.u| > this)
+  gate_cos_riser: 0.5                       # riser: |n.u| < this
+  min_inlier_frac: 0.5                      # frame dropped if fewer tread pixels agree with their own up vector
 train:
   epochs: 30
   batch_size: 2

@@ -170,3 +170,35 @@ def test_frame_rays_invert_brown_conrady_and_match_pinhole():
     n1, _ = normals_from_depth(zz, (fx, fy, cx, cy), tens(np.ones(tgt, bool), torch.bool))
     n2, _ = normals_from_depth(zz, r0, tens(np.ones(tgt, bool), torch.bool))
     assert (n1 - n2).abs().max() < 1e-4
+
+
+def test_clean_masks_drops_noise_and_non_stair_frames():
+    from data.stairnet.edges import clean_masks
+
+    cls = np.zeros((240, 320), np.uint8)
+    cls[60:140, 20:300] = 1  # a big tread
+    cls[140:170, 20:300] = 2  # a big riser
+    cls[10:20, 10:20] = 2  # speckle
+    cls[200:206, 100:140] = 1  # thin sliver
+    out = clean_masks(cls)
+    assert (out[10:20, 10:20] == 0).all() and (out[200:206, 100:140] == 0).all()
+    assert (out[60:140, 20:300] == 1).all() and (out[140:170, 20:300] == 2).all()
+    sparse = np.zeros_like(cls)
+    sparse[:30, :60] = 1  # < 5 % of the frame: not a stair scene
+    assert clean_masks(sparse).sum() == 0
+    assert clean_masks(cls, False) is cls
+
+
+def test_planar_gating_ignores_inconsistent_labels(stairs):
+    z, tr, ri, valid, band = stairs
+    rng = np.random.default_rng(0)
+    wrong = tr.copy()
+    wrong[ri] = True  # label every riser pixel as tread as well: geometrically inconsistent
+    base = run(z, stairs)
+    noisy = planar_loss(tens(z), tens(z), tens(valid, torch.bool), tens(wrong, torch.bool), tens(ri, torch.bool),
+                        tens(band, torch.bool), K, min_tread_px=200).item()
+    assert noisy < 1e-3, noisy  # gating removed the bogus tread pixels instead of penalising a perfect staircase
+    junk = rng.random(z.shape) > 0.5  # a frame whose "treads" are random pixels: dropped as a whole
+    l = planar_loss(tens(z), tens(z), tens(valid, torch.bool), tens(junk & (tr | ri), torch.bool),
+                    tens(np.zeros_like(ri), torch.bool), tens(band, torch.bool), K, min_tread_px=200).item()
+    assert l < 1e-3 and base < 1e-3

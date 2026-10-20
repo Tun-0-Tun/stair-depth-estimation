@@ -112,6 +112,8 @@ def build_loss(cfg: dict) -> AprimeLoss:
         planar_warmup_steps=int(l.get("planar_warmup_steps", 1000)),
         huber_delta=float(l.get("huber_delta", 0.1)), normal_source=l.get("normal_source", "gt"),
         min_tread_px=int(l.get("min_tread_px", 500)), lambda_grad=float(l.get("lambda_grad", 0.1)),
+        gate_cos_tread=float(l.get("gate_cos_tread", 0.85)), gate_cos_riser=float(l.get("gate_cos_riser", 0.5)),
+        min_inlier_frac=float(l.get("min_inlier_frac", 0.5)),
     )
     return AprimeLoss(lc, K)
 

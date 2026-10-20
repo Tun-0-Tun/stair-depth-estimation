@@ -43,6 +43,9 @@ class LossConfig:
     normal_source: str = "gt"
     min_tread_px: int = 500
     lambda_grad: float = 0.1
+    gate_cos_tread: float = 0.85
+    gate_cos_riser: float = 0.5
+    min_inlier_frac: float = 0.5
 
 
 class AprimeLoss:
@@ -72,6 +75,7 @@ class AprimeLoss:
             l_pl = planar_loss(
                 pred_m, gt_m, valid, b["tread"], b["riser"], b["band"] | b["ignore"], self.K,
                 c.normal_source, c.huber_delta, c.min_tread_px,
+                gate_cos_tread=c.gate_cos_tread, gate_cos_riser=c.gate_cos_riser, min_inlier_frac=c.min_inlier_frac,
             )
             out["planar"] = l_pl.detach()
             out["total"] = l_rec + beta * l_pl

@@ -84,6 +84,9 @@ def planar_loss(
     delta: float = 0.1,
     min_tread_px: int = 500,
     gt_smooth_k: int = 5,
+    gate_cos_tread: float = 0.85,
+    gate_cos_riser: float = 0.5,
+    min_inlier_frac: float = 0.5,
 ) -> torch.Tensor:
     """Scalar loss. All masks [B,1,H,W] bool; depths in metres. ``exclude`` = edge band | low-confidence."""
     if source == "gt":
@@ -96,6 +99,15 @@ def planar_loss(
     n_src = n_src.detach()
     good = valid & ~exclude
     up, has_up = robust_up(n_src, tread & ok_src & good, min_tread_px)
+    # Geometric gating (StairNet mislabels non-stair scenes): a label is trusted only where the
+    # reference normal agrees with it -- tread: |n.u| > gate_cos_tread, riser: |n.u| < gate_cos_riser.
+    # A frame whose treads are mostly inconsistent with their own up vector is dropped.
+    cos_src = (n_src * up[:, :, None, None]).sum(1, keepdim=True).abs()
+    tr_sel = tread & ok_src & good
+    inl = ((cos_src > gate_cos_tread) & tr_sel).flatten(1).sum(1) / tr_sel.flatten(1).sum(1).clamp_min(1)
+    has_up = has_up & (inl >= min_inlier_frac)
+    tread = tread & (cos_src > gate_cos_tread)
+    riser = riser & (cos_src < gate_cos_riser)
 
     n, ok = normals_from_depth(pred_m, K, valid)
     cos = (n * up[:, :, None, None]).sum(1, keepdim=True).abs()

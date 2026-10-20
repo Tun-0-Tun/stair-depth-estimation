@@ -16,6 +16,37 @@ import numpy as np
 from scipy import ndimage
 
 
+DEFAULT_CLEAN = {"min_area": 1500, "open_px": 3, "min_stair_frac": 0.05, "top_k": 0}
+
+
+def clean_masks(cls: np.ndarray, params: dict | None = None) -> np.ndarray:
+    """Suppress StairNet false positives (city scenes, textures): per class, binary opening, drop connected
+    regions smaller than ``min_area`` px (and keep only the ``top_k`` largest if >0); if the cleaned stair
+    area is below ``min_stair_frac`` of the frame the whole frame is declared "no stairs" (all background),
+    so neither the edge weight nor the planar loss act on it.  ``params=None`` -> DEFAULT_CLEAN, ``{}``/``False`` -> off.
+    """
+    if params is False or params == {}:
+        return cls
+    p = {**DEFAULT_CLEAN, **(params or {})}
+    out = np.zeros_like(cls)
+    k = np.ones((p["open_px"],) * 2, bool) if p["open_px"] > 1 else None
+    for c in (1, 2):
+        m = cls == c
+        if k is not None:
+            m = ndimage.binary_opening(m, k)
+        lab, n = ndimage.label(m)
+        if not n:
+            continue
+        sizes = np.asarray(ndimage.sum(m, lab, range(1, n + 1)))
+        ids = np.flatnonzero(sizes >= p["min_area"])
+        if p["top_k"]:
+            ids = ids[np.argsort(-sizes[ids])[: p["top_k"]]]
+        out[np.isin(lab, ids + 1)] = c
+    if (out > 0).mean() < p["min_stair_frac"]:
+        out[:] = 0
+    return out
+
+
 def boundary_map(cls: np.ndarray, stair_bg: bool = True) -> np.ndarray:
     """bool (H, W): pixels on a tread|riser (and stair|background) transition."""
     stair = cls > 0

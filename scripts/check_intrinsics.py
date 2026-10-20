@@ -257,6 +257,7 @@ def check(a) -> None:
     from data.degradation import IdentityDegradation
     from data.loaders import build_dataset
     from data.stairnet.cache import cache_dir, load_masks
+    from data.stairnet.edges import clean_masks
 
     crop, tgt = dataset_geometry()
     K = tuple(a.K_frame) if a.K_frame else convert_K(a.K, tuple(a.size), crop, tgt)
@@ -283,6 +284,7 @@ def check(a) -> None:
         if m is None:
             print("no StairNet cache for", s["meta"]["sample_id"], "- run scripts/stairnet_cache.py")
             continue
+        m["cls"] = clean_masks(m["cls"])  # drop small / non-stair false positives, like training does
         tread = (m["cls"] == 1) & (m["conf"] >= 0.7) & s["mask"]
         tread = ndimage.binary_erosion(tread, iterations=3)  # keep away from the mask border
         lab, n = ndimage.label(tread)

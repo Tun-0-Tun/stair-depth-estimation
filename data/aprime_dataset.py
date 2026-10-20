@@ -20,7 +20,7 @@ from torch.utils.data import Dataset
 from data.degradation import build_degradation, masked_downsample
 from data.loaders import build_dataset
 from data.stairnet.cache import load_masks
-from data.stairnet.edges import build_edge_maps
+from data.stairnet.edges import build_edge_maps, clean_masks
 from utils.misc import REPO_ROOT, data_root, sparse_to_dense_nn
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], np.float32)
@@ -48,6 +48,7 @@ def build_ours(cfg: dict, split: str, train: bool = False):
     deg["scale"] = int(cfg["model"]["scale"])
     deg["stochastic"] = bool(train)
     deg.setdefault("stair_cache_dir", resolve_cache(d))
+    deg.setdefault("mask_clean", d.get("mask_clean"))
     ds_cfg = {k: d[k] for k in ("name", "loader", "root", "crop", "target_size", "min_depth", "max_depth") if k in d}
     ds_cfg["split"] = split
     ds_cfg["stairs"] = load_split(d["split_file"])[split]
@@ -87,6 +88,7 @@ class APrimeDataset(Dataset):
         m = load_masks(self.cache, sample["meta"]["sample_id"], shape)
         if m is None:
             raise FileNotFoundError(f"no StairNet cache for {sample['meta']['sample_id']} in {self.cache}")
+        m["cls"] = clean_masks(m["cls"], self.cfg["data"].get("mask_clean"))
         e = build_edge_maps(m["cls"], m["conf"], self.edge_mode if self.edge_mode != "none" else "binary",
                             self.band_px, self.conf_thr, self.stair_bg)
         if self.edge_mode == "none":

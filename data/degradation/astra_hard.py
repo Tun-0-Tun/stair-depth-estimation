@@ -105,6 +105,8 @@ class AstraHardDegradation(BaseDegradation):
     stochastic: bool = False
     stair_cache_dir: str | None = None
     """Directory with ``<sample_id>.npz`` StairNet masks (see data/stairnet/cache.py)."""
+    mask_clean: dict | bool | None = None
+    """Parameters of data.stairnet.edges.clean_masks for the cached masks (None = defaults)."""
     base: dict[str, Any] = field(default_factory=dict)
     """Overrides for the wrapped ActiveStereoAstra2Degradation."""
     epoch: int = 0
@@ -118,11 +120,11 @@ class AstraHardDegradation(BaseDegradation):
         sid = None if context is None else context.get("sample_id")
         if self.stair_cache_dir and sid is not None:
             from data.stairnet.cache import load_masks
-            from data.stairnet.edges import boundary_map
+            from data.stairnet.edges import boundary_map, clean_masks
 
             m = load_masks(self.stair_cache_dir, sid, shape=gt.shape)
             if m is not None:
-                return boundary_map(m["cls"], self.stair_bg_boundary), "stairnet"
+                return boundary_map(clean_masks(m["cls"], self.mask_clean), self.stair_bg_boundary), "stairnet"
         valid = gt > 0
         return _depth_edges(gt, valid, 0.05), "depth_edges"
 
