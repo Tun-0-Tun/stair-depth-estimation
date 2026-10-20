@@ -315,6 +315,9 @@ def check(a) -> None:
                 for q in range(p + 1, len(ns)):
                     res[name]["angle_deg"].append(np.degrees(np.arccos(min(1.0, abs(float(ns[p] @ ns[q]))))))
     print(f"\nframes with usable treads: {used}/{len(idx)}")
+    if not used:
+        sys.exit("nothing to evaluate: build the StairNet cache first (python scripts/stairnet_cache.py) "
+                 f"and make sure it is at {cache}")
     print(f"{'K variant':<16}{'plane rms mm (median/p90)':<30}{'rms % of z (median)':<22}{'angle between treads deg (median/p90)'}")
     for name, r in res.items():
         if not r["rms_mm"]:
