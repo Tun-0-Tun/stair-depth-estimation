@@ -52,9 +52,25 @@ def read_bag(path, max_chunks: int = 20, want: tuple[str, ...] = ("CameraInfo", 
     first: dict[str, bytes] = {}
     counts: dict[str, int] = {}
     n_chunks = 0
+    # pass 1: Orbbec bags define some connections ONLY in the index section after the last chunk,
+    # so every message seen earlier would be dropped.  Collect all connection records first (seeks over chunks).
     with open(path, "rb") as f:
         if f.read(len(MAGIC)) != MAGIC:
             raise ValueError("not a ROS1 bag (v2.0)")
+        while True:
+            raw = f.read(4)
+            if len(raw) < 4:
+                break
+            (hl,) = struct.unpack("<I", raw)
+            h = _fields(f.read(hl))
+            (dl,) = struct.unpack("<I", f.read(4))
+            if h.get("op", b"\x00")[0] == 7:
+                _add_conn(conns, h, f.read(dl))
+            else:
+                f.seek(dl, 1)
+    # pass 2: chunks
+    with open(path, "rb") as f:
+        f.read(len(MAGIC))
         while True:
             raw = f.read(4)
             if len(raw) < 4:
@@ -90,8 +106,6 @@ def read_bag(path, max_chunks: int = 20, want: tuple[str, ...] = ("CameraInfo", 
                         if c:
                             counts[c["topic"]] = counts.get(c["topic"], 0) + 1
                             first.setdefault(c["topic"], rd)
-            elif op == 7:
-                _add_conn(conns, h, f.read(dl))
             else:
                 f.seek(dl, 1)
     return {"connections": conns, "first": first, "counts_in_scanned_chunks": counts, "n_chunks": n_chunks}

@@ -99,7 +99,7 @@ def extract_7z(p: Path, members: list[str], dst: Path) -> list[Path]:
     return [dst / m for m in members]
 
 
-def candidates(raw: Path, workdir: Path, max_bags: int, member: str | None, only: list[str] | None = None):
+def candidates(raw: Path, workdir: Path, max_bags: int, member: str | None, only: list[str] | None = None, no_text: bool = False):
     """Yield ``(bag path, origin)``: loose .bag files, or one bag extracted at a time from zip / tar / 7z archives.
 
     Archives are taken evenly spread over the sorted list (unless ``only`` names them), so a few
@@ -121,18 +121,18 @@ def candidates(raw: Path, workdir: Path, max_bags: int, member: str | None, only
                 bags = [m for m, _ in mem if m.endswith(".bag") and (not member or member in m)]
                 print(f"[archive] {p.name}: {len(mem)} files, {len(bags)} .bag; contents (first 25): "
                       f"{[(m, f'{sz / 1e6:.1f}MB') for m, sz in mem[:25]]}")
-                texts = [m for m, sz in mem if Path(m).suffix.lower() in TEXT_EXT and sz < 300_000]
-                if texts:
-                    d = workdir / p.stem
-                    for t in extract_7z(p, texts, d):
-                        body = t.read_text(errors="replace") if t.exists() else ""
-                        hit = re.search(r"(?i)intrinsic|focal|\bfx\b|principal", body)
-                        print(f"  [text] {t.name}: {len(body)} chars{'  <-- mentions intrinsics:' if hit else ''}")
-                        if hit:
-                            print("    " + body[:1200].replace("\n", "\n    "))
-                for m in bags[:1]:
-                    dst = extract_7z(p, [m], workdir / p.stem)[0]
-                    yield dst, f"{p.name}:{m}"
+                texts = [] if no_text else [m for m, sz in mem if Path(m).suffix.lower() in TEXT_EXT and sz < 300_000]
+                # ONE extraction call: a solid 7z is decompressed from the start for every call
+                print(f"  extracting {len(texts)} text file(s) + 1 bag from {p.name} (solid archives can take minutes) ...", flush=True)
+                out = extract_7z(p, texts + bags[:1], workdir / p.stem)
+                for t in out[: len(texts)]:
+                    body = t.read_text(errors="replace") if t.exists() else ""
+                    hit = re.search(r"(?i)intrinsic|focal|\bfx\b|principal", body)
+                    print(f"  [text] {t.name}: {len(body)} chars{'  <-- mentions intrinsics:' if hit else ''}")
+                    if hit or t.name == texts[0].split("/")[-1]:  # always show the first one
+                        print("    " + body[:1500].replace("\n", "\n    "))
+                if bags:
+                    yield out[-1], f"{p.name}:{bags[0]}"
             elif zipfile.is_zipfile(p):
                 with zipfile.ZipFile(p) as z:
                     names = [i for i in z.infolist() if i.filename.endswith(".bag")]
@@ -161,7 +161,7 @@ def inspect(a) -> None:
     if raw.is_file():
         raw = raw.parent if raw.suffix not in (".zip", ".tar", ".tgz", ".gz") else raw
     report, rows = [], []
-    for bag, origin in candidates(raw if raw.is_dir() else raw.parent, wd, a.max_bags, a.member, a.archives):
+    for bag, origin in candidates(raw if raw.is_dir() else raw.parent, wd, a.max_bags, a.member, a.archives, a.no_text):
         print(f"\n=== {bag}  ({origin or 'loose'}, {bag.stat().st_size / 1e6:.0f} MB)")
         if not is_ros_bag(bag):
             head = open(bag, "rb").read(64)
@@ -337,6 +337,7 @@ def main() -> None:
     i.add_argument("--raw", required=True)
     i.add_argument("--max-bags", type=int, default=6)
     i.add_argument("--member", help="only archive members whose name contains this")
+    i.add_argument("--no-text", action="store_true", help="do not extract/print the small text files (.json ...) of 7z archives")
     i.add_argument("--archives", nargs="*", help="only these archives, e.g. stair1 stair40 (default: evenly spread)")
     i.add_argument("--workdir", default="/tmp/intrinsics_inspect")
     i.add_argument("--out", default="outputs/intrinsics_report.json")

@@ -64,3 +64,15 @@ def test_ob_profile_and_late_latched_message(tmp_path):
     o = parse_ob_profile(r["first"]["/cam/profile"])
     assert o["stream_type"] == 2 and (o["width"], o["height"]) == (1920, 1080)
     assert o["K4"][0] == pytest.approx(1050.5) and o["K4"][3] == pytest.approx(541.1) and o["translation"][0] == pytest.approx(0.1)
+
+
+def test_connection_defined_only_in_index_section(tmp_path):
+    """Orbbec bags: the connection record of a topic comes after the chunks that hold its messages."""
+    msg = _rec(_f(op=b"\x02", conn=struct.pack("<I", 0), time=b"\0" * 8), b"payload")
+    conn = _rec(_f(op=b"\x07", conn=struct.pack("<I", 0), topic="/late"), _f(type="custom_msg/OBStreamProfileInfo", message_definition="x"))
+    chunk = msg
+    bag = MAGIC + _rec(_f(op=b"\x05", compression="none", size=len(chunk)), chunk) + conn
+    p = tmp_path / "late.bag"
+    p.write_bytes(bag)
+    r = read_bag(p)
+    assert r["first"]["/late"] == b"payload"
