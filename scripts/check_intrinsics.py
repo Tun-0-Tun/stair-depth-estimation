@@ -256,7 +256,7 @@ def check(a) -> None:
 
     from data.degradation import IdentityDegradation
     from data.loaders import build_dataset
-    from data.stairnet.cache import load_masks
+    from data.stairnet.cache import cache_dir, load_masks
 
     crop, tgt = dataset_geometry()
     K = tuple(a.K_frame) if a.K_frame else convert_K(a.K, tuple(a.size), crop, tgt)
@@ -264,7 +264,7 @@ def check(a) -> None:
     cfg = yaml.safe_load((REPO_ROOT / "configs/dataset/ours.yaml").read_text())
     ds = build_dataset({k: cfg[k] for k in ("name", "loader", "root", "crop", "target_size", "min_depth", "max_depth")},
                        degradation=IdentityDegradation())
-    cache = data_root() / a.cache
+    cache = cache_dir(a.cache)
     variants = {}
     if a.dist:
         if not a.K:

@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from data.degradation import IdentityDegradation
 from data.loaders import build_dataset
-from data.stairnet.cache import save_masks
+from data.stairnet.cache import cache_dir, save_masks
 from data.stairnet.infer import StairNetSeg
 from utils.misc import REPO_ROOT, data_root, resolve_device
 
@@ -28,7 +28,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--weights", default="weights/stairnet/depth_out/best.pth")
     ap.add_argument("--width-factor", type=float, default=1.0)
-    ap.add_argument("--out", default="ours/stairnet_cache")
+    ap.add_argument("--out", default="ours/stairnet_cache", help="relative to STAIR_DATA_ROOT; $STAIRNET_CACHE_DIR overrides")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--tread-class", type=int, default=1)
     ap.add_argument("--riser-class", type=int, default=2)
@@ -38,7 +38,8 @@ def main() -> None:
                        degradation=IdentityDegradation())
     dev = resolve_device(a.device)
     net = StairNetSeg(a.weights, a.width_factor, dev, a.tread_class, a.riser_class)
-    out = data_root() / a.out
+    out = cache_dir(a.out)
+    out.mkdir(parents=True, exist_ok=True)  # fail now, not after the first forward pass
     for i in tqdm(range(len(ds))):
         s = ds[i]
         r = net.predict(s["rgb"])

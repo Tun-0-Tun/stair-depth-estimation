@@ -21,7 +21,7 @@ import yaml
 
 from data.degradation import IdentityDegradation
 from data.loaders import build_dataset
-from data.stairnet.cache import load_masks
+from data.stairnet.cache import cache_dir, load_masks
 from data.stairnet.edges import build_edge_maps
 from utils.misc import REPO_ROOT, data_root
 
@@ -48,7 +48,7 @@ def main() -> None:
     for i in picks:
         s = ds[i]
         sid = s["meta"]["sample_id"]
-        m = load_masks(data_root() / a.cache, sid, s["rgb"].shape[:2])
+        m = load_masks(cache_dir(a.cache), sid, s["rgb"].shape[:2])
         if m is None:
             print("no cache for", sid)
             continue

@@ -36,8 +36,9 @@ def resolve_cache(cfg: dict) -> str | None:
     c = cfg.get("stair_cache")
     if not c or cfg.get("mask_source", "stairnet_official") == "none":
         return None
-    p = Path(c)
-    return str(p if p.is_absolute() else data_root() / p)
+    from data.stairnet.cache import cache_dir
+
+    return str(cache_dir(c))
 
 
 def build_ours(cfg: dict, split: str, train: bool = False):

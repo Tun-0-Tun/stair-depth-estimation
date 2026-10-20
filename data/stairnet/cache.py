@@ -8,9 +8,22 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
+
+#: set this when the data folder is read-only for you: every script then reads/writes the masks there
+CACHE_ENV = "STAIRNET_CACHE_DIR"
+
+
+def cache_dir(relative: str = "ours/stairnet_cache") -> Path:
+    """``$STAIRNET_CACHE_DIR`` if set, else ``$STAIR_DATA_ROOT/<relative>`` (an absolute ``relative`` wins)."""
+    from utils.misc import data_root
+
+    if os.environ.get(CACHE_ENV):
+        return Path(os.environ[CACHE_ENV]).expanduser()
+    return data_root() / relative
 
 
 def save_masks(cache_dir, sample_id, cls, conf, lines=None) -> None:
