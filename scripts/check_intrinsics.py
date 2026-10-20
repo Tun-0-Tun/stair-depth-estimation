@@ -286,7 +286,7 @@ def check(a) -> None:
         tread = (m["cls"] == 1) & (m["conf"] >= 0.7) & s["mask"]
         tread = ndimage.binary_erosion(tread, iterations=3)  # keep away from the mask border
         lab, n = ndimage.label(tread)
-        comps = [lab == j for j in range(1, n + 1) if (lab == j).sum() >= a.min_px]
+        comps = sorted((lab == j for j in range(1, n + 1) if (lab == j).sum() >= a.min_px), key=lambda c: -c.sum())[: a.top]
         if not comps:
             continue
         used += 1
@@ -295,14 +295,15 @@ def check(a) -> None:
             ns = []
             risers = ndimage.binary_erosion((m["cls"] == 2) & (m["conf"] >= 0.7) & s["mask"], iterations=3)
             rl, rn = ndimage.label(risers)
-            rnorm = [fit_plane(P[rl == j])[0] for j in range(1, rn + 1) if (rl == j).sum() >= a.min_px]
+            rcomps = sorted((rl == j for j in range(1, rn + 1) if (rl == j).sum() >= a.min_px), key=lambda c: -c.sum())[: a.top]
+            rnorm = [fit_plane(P[c])[0] for c in rcomps]
             for c in comps:
                 nrm, rms, _ = fit_plane(P[c])
                 zc = float(np.median(s["gt_depth"][c]))
                 res[name]["rms_mm"].append(rms * 1000)
                 res[name]["rel_pct"].append(100 * rms / zc)
                 ns.append(nrm)
-            for nt in ns[:1]:  # nearest-to-label-order tread vs every riser
+            for nt in ns:  # every large tread vs every large riser
                 for nr in rnorm:
                     res[name]["tr_dev"].append(abs(90 - np.degrees(np.arccos(min(1.0, abs(float(nt @ nr)))))))
             gt = s["gt_depth"]
@@ -355,7 +356,8 @@ def main() -> None:
     k.add_argument("--K-frame", type=float, nargs=4, help="K already in the 528x688 frame")
     k.add_argument("--size", type=int, nargs=2, default=(1920, 1080))
     k.add_argument("--frames", type=int, default=30)
-    k.add_argument("--min-px", type=int, default=400)
+    k.add_argument("--min-px", type=int, default=1500, help="smallest tread / riser region used (frame pixels)")
+    k.add_argument("--top", type=int, default=3, help="use only the largest N regions per class and frame")
     k.add_argument("--cache", default="ours/stairnet_cache")
     a = ap.parse_args()
     if a.cmd == "inspect":
