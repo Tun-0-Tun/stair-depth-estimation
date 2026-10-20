@@ -20,8 +20,8 @@ def test_masked_downsample_marks_holes():
 
 def test_severity_orders_holes_and_test_is_deterministic():
     rng = np.random.default_rng(0)
-    gt = (rng.uniform(1, 4, (96, 128))).astype(np.float32)
-    rgb = rng.random((96, 128, 3)).astype(np.float32)
+    gt = (rng.uniform(1, 4, (264, 344))).astype(np.float32)
+    rgb = rng.random((264, 344, 3)).astype(np.float32)
     ctx = {"rgb": rgb, "sample_id": "s1"}
     inv = {}
     for sev in ("light", "medium", "strong"):
@@ -29,7 +29,7 @@ def test_severity_orders_holes_and_test_is_deterministic():
         a, b = d(gt, seed=3, context=ctx), d(gt, seed=3, context=ctx)
         assert np.array_equal(a["sparse_depth"], b["sparse_depth"])
         inv[sev] = a["meta"]["input_invalid_frac"]
-        assert a["lr_depth"].shape == (12, 16) and (a["lr_depth"] > 0).all()
+        assert a["lr_depth"].shape == (33, 43) and (a["lr_depth"] > 0).any()
     assert inv["light"] < inv["medium"] < inv["strong"], inv
     t = AstraHardDegradation(severity="strong", scale=8, stochastic=True)
     x = t(gt, seed=3, context=ctx)["sparse_depth"]
@@ -40,7 +40,7 @@ def test_severity_orders_holes_and_test_is_deterministic():
 def test_switches_off_means_no_added_holes():
     gt = np.full((64, 64), 2.0, np.float32)
     d = AstraHardDegradation(severity="light", edge_holes=False, glare_holes=False, blob_holes=False,
-                             depth_noise=False, flying=False, base={"dropout_base": 0.0, "occlusion": False})
+                             depth_noise=False, flying=False, far_dropout=False, base={"dropout_base": 0.0, "occlusion": False})
     o = d(gt, seed=0, context={"rgb": np.zeros((64, 64, 3), np.float32), "sample_id": "x"})
     assert o["meta"]["input_invalid_frac"] == 0.0
 

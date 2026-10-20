@@ -7,7 +7,8 @@ and artefact types the stair task needs.  Each type has its own switch:
 1. ``edge_holes``   bands along tread/riser (and stair/background) boundaries, random width
 2. ``glare_holes``  specular / bright and flat low-texture RGB regions
 3. ``blob_holes``   large irregular blobs
-4. ``depth_noise``  disparity noise (quadratic in z once mapped back to depth); amplitude x severity
+4. ``depth_noise``  disparity noise (quadratic in z) + spatially correlated depth error; amplitude x severity
+   ``far_dropout``  extra holes whose probability rises with depth (real Astra: 38 % holes at 4-8 m)
 5. ``flying``       "flying pixels" on depth discontinuities (disparity quantisation lives in the base)
 
 Then the HR map is area-downsampled by ``scale`` with a validity mask
@@ -41,17 +42,21 @@ __all__ = ["AstraHardDegradation", "SEVERITY", "masked_downsample"]
 
 # multipliers / amplitudes per severity. Starting values, see module docstring.
 SEVERITY: dict[str, dict[str, float]] = {
+    # Calibrated against scripts/astra_defect_stats.py on the real ours GT (invalid share 14.9 %, 41 % of the
+    # holes within 5 px of a depth edge, hole rate 10 % at <4 m vs 38 % at 4-8 m).  Still starting values:
+    # re-run the stats script after every change.  corr = amplitude of the spatially correlated depth error
+    # (relative, scales with z/3 m) -- white noise alone is averaged away by the x8 block pooling.
     "light": dict(
-        sigma_disp=0.08, dropout=0.004, edge_cov=0.10, edge_w=(2, 4), glare_p=0.3,
-        blob_n=(0, 2), blob_r=(6, 15), fly_p=0.10,
+        sigma_disp=0.08, dropout=0.004, edge_cov=0.12, edge_w=(2, 5), glare_p=0.3, glare_cap=0.05,
+        blob_n=(0, 3), blob_r=(6, 18), fly_p=0.10, far_p=0.05, corr=0.005,
     ),
     "medium": dict(
-        sigma_disp=0.16, dropout=0.010, edge_cov=0.30, edge_w=(3, 8), glare_p=0.6,
-        blob_n=(1, 4), blob_r=(8, 28), fly_p=0.25,
+        sigma_disp=0.16, dropout=0.010, edge_cov=0.50, edge_w=(4, 12), glare_p=0.7, glare_cap=0.10,
+        blob_n=(3, 8), blob_r=(12, 40), fly_p=0.30, far_p=0.15, corr=0.012,
     ),
     "strong": dict(
-        sigma_disp=0.30, dropout=0.020, edge_cov=0.60, edge_w=(4, 14), glare_p=0.9,
-        blob_n=(3, 8), blob_r=(12, 45), fly_p=0.45,
+        sigma_disp=0.30, dropout=0.020, edge_cov=0.85, edge_w=(6, 20), glare_p=0.9, glare_cap=0.15,
+        blob_n=(6, 14), blob_r=(15, 60), fly_p=0.50, far_p=0.35, corr=0.030,
     ),
 }
 
@@ -99,9 +104,8 @@ class AstraHardDegradation(BaseDegradation):
     blob_holes: bool = True
     depth_noise: bool = True
     flying: bool = True
+    far_dropout: bool = True
     stair_bg_boundary: bool = True
-    glare_max_frac: float = 0.08
-    """Cap on the share of the frame removed by glare/flat-region holes."""
     stochastic: bool = False
     stair_cache_dir: str | None = None
     """Directory with ``<sample_id>.npz`` StairNet masks (see data/stairnet/cache.py)."""
@@ -150,6 +154,9 @@ class AstraHardDegradation(BaseDegradation):
         z = np.asarray(base.apply(gt, rng)["sparse_depth"], np.float32)
         hole = z <= 0
         base_hole = hole & ~real_hole
+        if self.depth_noise and sev["corr"] > 0:  # low-frequency error that block pooling cannot average away
+            f = _smooth_field(rng, (h, w), 40.0)
+            z = np.where(z > 0, z * (1.0 + sev["corr"] * (z / 3.0) * f), 0.0).astype(np.float32)
 
         # 5. flying pixels on discontinuities
         if self.flying:
@@ -188,7 +195,7 @@ class AstraHardDegradation(BaseDegradation):
                 sizes = ndimage.sum(cand, lab, range(1, n + 1))
                 used = 0.0
                 for j in rng.permutation(n):  # random order, stop at the per-frame cap
-                    if sizes[j] >= 400 and rng.random() < sev["glare_p"] and used + sizes[j] <= self.glare_max_frac * h * w:
+                    if sizes[j] >= 400 and rng.random() < sev["glare_p"] and used + sizes[j] <= sev['glare_cap'] * h * w:
                         added |= lab == j + 1
                         used += sizes[j]
         # 3. large irregular blobs
@@ -201,6 +208,10 @@ class AstraHardDegradation(BaseDegradation):
                 rr = np.hypot((yy - cy) / rng.uniform(0.6, 1.4), xx - cx)
                 added |= rr / r + 0.25 * nf < 1.0
 
+        if self.far_dropout and sev["far_p"] > 0:  # probability rises with the true depth
+            p = sev["far_p"] * np.clip((gt - 2.5) / 3.5, 0.0, 1.0)
+            u = 0.5 * (1.0 + _erf(_smooth_field(rng, (h, w), 20.0) / np.sqrt(2.0)))  # ~U(0,1), spatially correlated
+            added |= u < p
         z = np.where(added, 0.0, z).astype(np.float32)
         lr, lr_valid = masked_downsample(z, self.scale, self.lr_min_frac)
         lr_dense = sparse_to_dense_nn(lr) if lr_valid.any() else lr
@@ -225,3 +236,9 @@ def _erfinv(x: float) -> float:
     from scipy.special import erfinv
 
     return float(erfinv(np.clip(x, -0.999, 0.999)))
+
+
+def _erf(x):
+    from scipy.special import erf
+
+    return erf(x)

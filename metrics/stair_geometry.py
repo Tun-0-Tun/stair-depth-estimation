@@ -40,12 +40,17 @@ def up_vector(gt: np.ndarray, tread: np.ndarray, K, min_px: int = 200) -> np.nda
     return up[0].numpy().astype(np.float64) if has[0] else None
 
 
-def step_geometry(depth, tread, K, up, n_steps: int = 3, min_px: int = 200):
-    """``{"rise": [n], "run": [n]}`` (NaN where a step is missing)."""
+def step_geometry(depth, tread, K, up, n_steps: int = 3, min_px: int = 200, comps=None):
+    """``{"rise": [n], "run": [n]}`` (NaN where a step is missing).
+
+    ``comps``: tread regions in step order; pass the SAME list for GT and prediction, otherwise a small depth
+    difference reorders / merges regions and the "error" is a bookkeeping artefact.
+    """
     P = _points(depth, K)
     fwd = np.array([0.0, 0.0, 1.0]) - up * up[2]
     fwd /= np.linalg.norm(fwd)
-    comps = _treads(tread & (depth > 0), depth, min_px)
+    if comps is None:
+        comps = _treads(tread & (depth > 0), depth, min_px)
     h = [float(np.median(P[m] @ up)) for m in comps]
     rise = [h[k + 1] - h[k] if k + 1 < len(h) else np.nan for k in range(n_steps)]
     run = []
@@ -58,12 +63,17 @@ def step_geometry(depth, tread, K, up, n_steps: int = 3, min_px: int = 200):
     return {"rise": np.array(rise), "run": np.array(run)}
 
 
-def step_geometry_error(pred, gt, tread, K, n_steps: int = 3) -> dict[str, np.ndarray] | None:
-    """Absolute (m) and relative errors of rise/run for the nearest steps; ``None`` without a usable up vector."""
-    up = up_vector(gt, tread & (gt > 0), K)
+def step_geometry_error(pred, gt, tread, K, n_steps: int = 3, min_px: int = 1500) -> dict[str, np.ndarray] | None:
+    """Absolute (m) and relative errors of rise/run for the nearest steps; ``None`` without a usable up vector.
+
+    Tread regions (>= ``min_px`` px) and their order come from the GT depth and are used for both maps.
+    """
+    up = up_vector(gt, tread & (gt > 0), K, min_px=min_px)
     if up is None:
         return None
-    g, p = step_geometry(gt, tread, K, up, n_steps), step_geometry(pred, tread, K, up, n_steps)
+    comps = _treads(tread & (gt > 0), gt, min_px)
+    g = step_geometry(gt, tread, K, up, n_steps, min_px, comps)
+    p = step_geometry(pred, tread, K, up, n_steps, min_px, comps)
     out = {}
     for k in ("rise", "run"):
         out[f"{k}_abs"] = np.abs(p[k] - g[k])

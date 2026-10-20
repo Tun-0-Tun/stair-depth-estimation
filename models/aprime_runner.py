@@ -243,5 +243,5 @@ def evaluate(cfg: dict, predict, ds: APrimeDataset, limit: int | None = None) ->
     out["n_frames"], out["seconds"] = n, time.perf_counter() - t0
     if geo:
         for k in geo[0]:
-            out[f"step_{k}"] = float(np.nanmean(np.concatenate([g[k] for g in geo])))
+            out[f"step_{k}"] = float(np.nanmedian(np.concatenate([g[k] for g in geo])))  # median: robust to merged / missing regions
     return out
