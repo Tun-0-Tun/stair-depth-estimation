@@ -1,7 +1,7 @@
 """Offline StairNet outputs on disk, one ``<sample_id>.npz`` per frame, in the loader's frame.
 
 ``cls``  uint8 (H, W): 0 background, 1 tread, 2 riser (canonical ids, mapped from the net's
-         channels by ``StairNetSeg.class_map``)
+         channels by ``StairNetSeg.class_map``: net channel 2 -> tread, 1 -> riser)
 ``conf`` float16 (H, W): softmax confidence of the arg-max class
 ``lines`` float32 (N, 6): class (0 convex / 1 concave), x1, y1, x2, y2, confidence, frame pixels
 """

@@ -61,8 +61,8 @@ class StairNetSeg:
         weights: str | Path = "weights/stairnet/depth_out/best.pth",
         width_factor: float = 1.0,
         device: str = "cuda",
-        tread_class: int = 1,
-        riser_class: int = 2,
+        tread_class: int = 2,
+        riser_class: int = 1,
         line_conf: float = 0.5,
     ) -> None:
         w = Path(weights)
@@ -78,8 +78,8 @@ class StairNetSeg:
         sd = sd.get("state_dict", sd.get("model", sd))
         net.load_state_dict({k.replace("module.", "", 1): v for k, v in sd.items()})
         self.net, self.device = net.to(device).eval(), device
-        # UNVERIFIED default: which of the net's channels 1/2 is tread/riser must be checked
-        # on the visualisations (scripts/stairnet_viz.py) before the masks are used.
+        # Verified by eye on the stairnet_viz overlays (2026-10-20): the net's channel 2 is the
+        # horizontal part (tread), channel 1 the vertical part (riser).
         self.class_map = {0: 0, tread_class: 1, riser_class: 2}
         self.line_conf = line_conf
 

@@ -30,8 +30,8 @@ def main() -> None:
     ap.add_argument("--width-factor", type=float, default=1.0)
     ap.add_argument("--out", default="ours/stairnet_cache", help="relative to STAIR_DATA_ROOT; $STAIRNET_CACHE_DIR overrides")
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--tread-class", type=int, default=1)
-    ap.add_argument("--riser-class", type=int, default=2)
+    ap.add_argument("--tread-class", type=int, default=2, help="net channel that is the horizontal part")
+    ap.add_argument("--riser-class", type=int, default=1, help="net channel that is the vertical part")
     a = ap.parse_args()
     cfg = yaml.safe_load((REPO_ROOT / "configs/dataset/ours.yaml").read_text())
     ds = build_dataset({k: cfg[k] for k in ("name", "loader", "root", "crop", "target_size")},

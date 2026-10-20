@@ -29,7 +29,7 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args()
     # identity class map: report the net's raw channels
-    net = StairNetSeg(a.weights, device=resolve_device(a.device), tread_class=1, riser_class=2)
+    net = StairNetSeg(a.weights, device=resolve_device(a.device), tread_class=1, riser_class=2)  # identity: report the net's own channels
     conf = np.zeros((3, 3), np.int64)
     files = sorted(Path(a.images).glob("*.jpg"))[: a.limit or None]
     for f in files:

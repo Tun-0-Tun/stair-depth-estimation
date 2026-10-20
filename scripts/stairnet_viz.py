@@ -5,8 +5,8 @@
 
 Picks up to ``--per-stairs`` shots from every staircase (first and middle shot).  Colours:
 tread = green, riser = red, low-confidence (< conf_thr) = grey hatch, edge band = yellow outline,
-convex lines blue, concave lines magenta.  The tread/riser assignment is UNVERIFIED until you
-looked at these images; if swapped, re-run stairnet_cache.py with --tread-class/--riser-class.
+convex lines blue, concave lines magenta.  Tread = horizontal part, riser = vertical part.
+If swapped, re-run stairnet_cache.py with --tread-class/--riser-class (default there: tread 2, riser 1).
 """
 from __future__ import annotations
 
