@@ -7,7 +7,8 @@
   2. convert  -- full-resolution RGB K -> K of the 528x688 frame (crop + resize from configs/dataset/ours.yaml):
        python scripts/check_intrinsics.py convert --K 1050.2 1049.8 960.1 540.7 [--size 1920 1080]
   3. check    -- geometry test on real frames (needs the StairNet cache): treads must be flat and parallel:
-       python scripts/check_intrinsics.py check --K 1050.2 1049.8 960.1 540.7 [--frames 30]
+       python scripts/check_intrinsics.py check --K 1253.823 1254.361 963.150 531.778 \\
+           --dist 0.11249 -0.32884 0.25819 0 0 0 -0.0005 -0.00012 [--frames 30]
 
 `check` unprojects the sensor depth with K and, per confident StairNet region, reports:
   * plane rms of treads (mm)       -> detects lens distortion / depth-RGB misalignment.  A wrong fx, fy or
@@ -39,15 +40,7 @@ from utils.rosbag_min import is_ros_bag, parse_camera_info, parse_ob_disparity, 
 
 
 # ------------------------------------------------------------------ convert
-def convert_K(K, size, crop, target_size):
-    """Full-frame K (fx, fy, cx, cy) -> K after ``crop=(y0,y1,x0,x1)`` and resize to ``target_size=(h,w)``.
-
-    Pixel-centre convention (what cv2/torch resize does): u' = (u - x0 + 0.5) * s - 0.5.
-    """
-    fx, fy, cx, cy = K
-    y0, y1, x0, x1 = crop if crop else (0, size[1], 0, size[0])
-    sy, sx = (target_size[0] / (y1 - y0), target_size[1] / (x1 - x0)) if target_size else (1.0, 1.0)
-    return (fx * sx, fy * sy, (cx - x0 + 0.5) * sx - 0.5, (cy - y0 + 0.5) * sy - 0.5)
+from utils.camera import convert_K, frame_rays  # noqa: E402
 
 
 def dataset_geometry():
@@ -239,6 +232,8 @@ def _print_convert(K, size):
 
 # ------------------------------------------------------------------- check
 def unproject(depth, K):
+    if hasattr(K, "shape") and len(K.shape) == 3:  # undistorted ray map
+        return np.stack([K[0] * depth, K[1] * depth, depth], -1)
     fx, fy, cx, cy = K
     v, u = np.mgrid[: depth.shape[0], : depth.shape[1]].astype(np.float64)
     return np.stack([(u - cx) / fx * depth, (v - cy) / fy * depth, depth], -1)
@@ -270,7 +265,13 @@ def check(a) -> None:
     ds = build_dataset({k: cfg[k] for k in ("name", "loader", "root", "crop", "target_size", "min_depth", "max_depth")},
                        degradation=IdentityDegradation())
     cache = data_root() / a.cache
-    variants = {"K": K, "fx,fy -10%": (K[0] * .9, K[1] * .9, K[2], K[3]), "fx,fy +10%": (K[0] * 1.1, K[1] * 1.1, K[2], K[3]),
+    variants = {}
+    if a.dist:
+        if not a.K:
+            sys.exit("--dist needs --K (full-resolution K)")
+        shape = tuple(cfg["target_size"]) if cfg.get("target_size") else None
+        variants["K + distortion"] = frame_rays(shape, a.K, a.dist, crop, tgt, tuple(a.size))
+    variants |= {"K": K, "fx,fy -10%": (K[0] * .9, K[1] * .9, K[2], K[3]), "fx,fy +10%": (K[0] * 1.1, K[1] * 1.1, K[2], K[3]),
                 "fx only +10%": (K[0] * 1.1, K[1], K[2], K[3])}
     res = {k: {"rms_mm": [], "rel_pct": [], "angle_deg": [], "tr_dev": [], "rise": [], "run": []} for k in variants}
     from metrics.stair_geometry import step_geometry, up_vector
@@ -346,6 +347,8 @@ def main() -> None:
     c.add_argument("--size", type=int, nargs=2, default=(1920, 1080), metavar=("W", "H"))
     k = sub.add_parser("check")
     k.add_argument("--K", type=float, nargs=4, metavar=("FX", "FY", "CX", "CY"), help="full-resolution RGB K")
+    k.add_argument("--dist", type=float, nargs=8, metavar=("K1", "K2", "K3", "K4", "K5", "K6", "P1", "P2"),
+                   help="Orbbec distortion (k1..k6, p1, p2): adds a variant that undistorts the rays")
     k.add_argument("--K-frame", type=float, nargs=4, help="K already in the 528x688 frame")
     k.add_argument("--size", type=int, nargs=2, default=(1920, 1080))
     k.add_argument("--frames", type=int, default=30)

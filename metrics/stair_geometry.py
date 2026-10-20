@@ -19,6 +19,9 @@ from models.planar_loss import normals_from_depth, robust_up
 
 
 def _points(depth: np.ndarray, K) -> np.ndarray:
+    if hasattr(K, "shape") and len(K.shape) == 3:  # undistorted ray map [2,H,W]
+        r = np.asarray(K, np.float64)
+        return np.stack([r[0] * depth, r[1] * depth, depth], -1)
     fx, fy, cx, cy = K
     v, u = np.mgrid[: depth.shape[0], : depth.shape[1]].astype(np.float64)
     return np.stack([(u - cx) / fx * depth, (v - cy) / fy * depth, depth], -1)

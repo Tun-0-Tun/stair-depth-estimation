@@ -145,3 +145,28 @@ def test_step_geometry_recovers_rise_and_run_and_error_scales(stairs):
     assert np.nanmax(e0["rise_abs"]) < 1e-6
     e1 = step_geometry_error(np.where(tr, z * 1.03, z).astype(np.float32), z, tr, K)
     assert np.nanmax(e1["rise_abs"]) > 1e-3
+
+
+def test_frame_rays_invert_brown_conrady_and_match_pinhole():
+    cv2 = pytest.importorskip("cv2")
+    from utils.camera import convert_K, frame_rays
+
+    Kf, D, size = (1253.8, 1254.4, 963.2, 531.8), (0.1125, -0.3288, 0.2582, 0, 0, 0, -0.0005, -0.00012), (1920, 1080)
+    crop, tgt = (12, 1068, 256, 1632), (528, 688)
+    rays = frame_rays(tgt, Kf, D, crop, tgt)
+    # forward-project a known ray with cv2 (distorted), map to the cropped/resized frame, compare
+    ray = np.array([[0.3, -0.2, 1.0]])
+    Km = np.array([[Kf[0], 0, Kf[2]], [0, Kf[1], Kf[3]], [0, 0, 1.0]])
+    px = cv2.projectPoints(ray, np.zeros(3), np.zeros(3), Km, np.array([D[0], D[1], D[6], D[7], D[2], D[3], D[4], D[5]]))[0][0, 0]
+    u, v = (px[0] - crop[2] + 0.5) * 0.5 - 0.5, (px[1] - crop[0] + 0.5) * 0.5 - 0.5
+    got = rays[:, int(round(v)), int(round(u))]
+    assert np.abs(got - ray[0, :2]).max() < 6e-3  # one frame pixel ~ 1/627 rad
+    # without distortion == pinhole of the converted K
+    r0 = frame_rays(tgt, Kf, None, crop, tgt)
+    fx, fy, cx, cy = convert_K(Kf, size, crop, tgt)
+    assert np.allclose(r0[0, 100, 200], (200 - cx) / fx, atol=1e-5) and np.allclose(r0[1, 100, 200], (100 - cy) / fy, atol=1e-5)
+    # ray maps work in the loss/geometry code and equal the pinhole path
+    zz = tens(np.full((tgt[0], tgt[1]), 2.0, np.float32))
+    n1, _ = normals_from_depth(zz, (fx, fy, cx, cy), tens(np.ones(tgt, bool), torch.bool))
+    n2, _ = normals_from_depth(zz, r0, tens(np.ones(tgt, bool), torch.bool))
+    assert (n1 - n2).abs().max() < 1e-4

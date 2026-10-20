@@ -15,8 +15,15 @@ max_depth: 8.0
 eval:
   crop: none
 docs: docs/datasets.md
-# Intrinsics (fx, fy, cx, cy) of the RGB camera IN THE 528x688 FRAME (after crop + target_size).
-# null = not known yet -> every K-dependent component (planar loss, step-geometry metric) is
-# disabled with a warning. Source: the raw .bag captures (in archives under raw/) contain the camera intrinsics
-# (per user, 2026-10-19) -- read them for the RGB stream, then rescale for crop [12,1068,256,1632] + the 0.5 resize. Fill in with the source in a comment, e.g. "Orbbec SDK, serial ...".
-intrinsics: null
+# Intrinsics of the RGB camera, from the Orbbec recording /cam/streamProfileType_2 in
+# raw/other/Orbbec Astra 2_AARW74100AD_20260911151248.bag (read with scripts/check_intrinsics.py inspect).
+# `intrinsics` = K IN THE CROPPED + RESIZED FRAME (crop and target_size above); `camera` = the 1920x1080 stream it was made from.
+# (Checked on ONE bag only -- run `inspect` over the staircase archives to confirm one calibration for all.)
+intrinsics: [626.911, 627.181, 353.325, 259.639]
+camera:
+  size: [1920, 1080]
+  K: [1253.823, 1254.361, 963.150, 531.778]
+  distortion_ob: [0.11249, -0.32884, 0.25819, 0.0, 0.0, 0.0, -0.0005, -0.00012]   # Brown-Conrady k1..k6, p1, p2
+  # false = pinhole K only. Set true (rays are undistorted in the planar loss / step metric) once
+  # `check_intrinsics.py check ... --dist ...` shows lower tread-plane rms for "K + distortion".
+  use_distortion: false

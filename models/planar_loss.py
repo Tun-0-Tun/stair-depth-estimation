@@ -3,7 +3,7 @@
 Idea: "stairs as parallel planes, riser/tread told apart by the normal's angle to the up
 vector" -- Perez-Yus et al., ECCV-W 2014 and CVIU 2017; the transfer into a training loss is ours.
 
-Per frame: depth (m) -> point cloud with intrinsics ``K = (fx, fy, cx, cy)`` -> normals
+Per frame: depth (m) -> point cloud with intrinsics ``K = (fx, fy, cx, cy)`` (or an undistorted ray map ``[2,H,W]``) -> normals
 (cross product of central differences, camera-facing, masked where any neighbour is invalid
 or across a depth jump) -> up vector ``u`` = robust mean of the tread normals ->
 tread: ``1 - |n.u|``, riser: ``|n.u|`` through Huber.  Frames with fewer than
@@ -30,11 +30,15 @@ def normals_from_depth(
     z: torch.Tensor, K, valid: torch.Tensor, max_rel_jump: float = 0.15
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """``z`` [B,1,H,W] metres -> unit normals [B,3,H,W] facing the camera (n.P < 0), validity [B,1,H,W]."""
-    fx, fy, cx, cy = (float(k) for k in K)
     B, _, H, W = z.shape
-    v = torch.arange(H, device=z.device, dtype=z.dtype).view(1, 1, H, 1)
-    u = torch.arange(W, device=z.device, dtype=z.dtype).view(1, 1, 1, W)
-    P = torch.cat([(u - cx) / fx * z, (v - cy) / fy * z, z], dim=1)
+    if hasattr(K, "shape") and len(K.shape) == 3:  # undistorted ray map [2,H,W] (utils/camera.py)
+        r = torch.as_tensor(K).to(z)[None]
+        P = torch.cat([r[:, 0:1] * z, r[:, 1:2] * z, z], dim=1)
+    else:  # pinhole (fx, fy, cx, cy)
+        fx, fy, cx, cy = (float(k) for k in K)
+        v = torch.arange(H, device=z.device, dtype=z.dtype).view(1, 1, H, 1)
+        u = torch.arange(W, device=z.device, dtype=z.dtype).view(1, 1, 1, W)
+        P = torch.cat([(u - cx) / fx * z, (v - cy) / fy * z, z], dim=1)
     dPu = P[:, :, 1:-1, 2:] - P[:, :, 1:-1, :-2]
     dPv = P[:, :, 2:, 1:-1] - P[:, :, :-2, 1:-1]
     n = torch.cross(dPu, dPv, dim=1)

@@ -137,6 +137,8 @@ class AstraHardDegradation(BaseDegradation):
 
         # base Astra model: quantisation, matching noise (x severity), shadows, dropout
         bp = dict(
+            baseline_m=0.0752,  # measured: Orbbec recording /cam/disparityParam (baseline 75.2 mm); depth stream fx 1426 px @1600x1200
+            focal_px=627.2,  # = colour-frame focal of the 528x688 frames (disparity-domain quantisation is then ~2.3x coarser than the sensor's)
             sigma_disp_px=sev["sigma_disp"] if self.depth_noise else 0.0,
             dropout_base=sev["dropout"],
             edge_fatten_px=2 if self.flying else 0,

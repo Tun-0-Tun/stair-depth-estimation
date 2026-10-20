@@ -55,9 +55,33 @@ def load_cfg(path: str | Path, overrides: list[str] = ()) -> dict:
     return cfg
 
 
-def intrinsics(cfg: dict):
-    k = cfg["data"].get("intrinsics")
-    return None if not k else tuple(float(k[x]) for x in ("fx", "fy", "cx", "cy")) if isinstance(k, dict) else tuple(map(float, k))
+def intrinsics(cfg: dict, shape=None):
+    """``None`` (unknown) | ``(fx, fy, cx, cy)`` | undistorted ray map ``[2,H,W]`` if ``data.camera.use_distortion``.
+
+    ``data.intrinsics`` is the K of the cropped / resized frame; ``data.camera`` holds the full-resolution
+    stream (K, size, Orbbec distortion) from which the ray map is built.
+    """
+    d = cfg["data"]
+    k = d.get("intrinsics")
+    if not k:
+        return None
+    K = tuple(float(k[x]) for x in ("fx", "fy", "cx", "cy")) if isinstance(k, dict) else tuple(map(float, k))
+    cam = d.get("camera") or {}
+    if cam.get("use_distortion") and cam.get("distortion_ob"):
+        from utils.camera import frame_rays
+
+        ts = d.get("target_size") or (None if not d.get("crop") else None)
+        hw = tuple(shape) if shape else tuple(ts) if ts else None
+        if hw is None:
+            raise ValueError("distortion needs target_size (or an explicit frame shape)")
+        key = (hw, tuple(cam["K"]), tuple(cam["distortion_ob"]), str(d.get("crop")), str(d.get("target_size")))
+        if key not in _RAYS:
+            _RAYS[key] = frame_rays(hw, cam["K"], cam["distortion_ob"], d.get("crop"), d.get("target_size"), cam.get("size", (1920, 1080)))
+        return _RAYS[key]
+    return K
+
+
+_RAYS: dict = {}
 
 
 # ------------------------------------------------------------------- model
