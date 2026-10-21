@@ -102,15 +102,19 @@ class BaseDegradation(abc.ABC):
         else:
             out = dict(self.apply(gt, rng))
 
-        sparse = np.asarray(out.get("sparse_depth"), dtype=np.float32)
-        sparse = np.nan_to_num(sparse, nan=0.0, posinf=0.0, neginf=0.0)
-        sparse[sparse < 0] = 0.0
-        out["sparse_depth"] = sparse
+        # Set sparse / lr / meta information
+        sparse = out.get("sparse_depth")
+        if sparse is not None:
+            sparse = np.asarray(sparse, dtype=np.float32)
+            sparse = np.nan_to_num(sparse, nan=0.0, posinf=0.0, neginf=0.0)
+            sparse[sparse < 0] = 0.0
+            out["sparse_depth"] = sparse
         lr = out.get("lr_depth")
         if lr is not None:
-            out["lr_depth"] = np.nan_to_num(
-                np.asarray(lr, dtype=np.float32), nan=0.0, posinf=0.0, neginf=0.0
-            )
+            lr = np.asarray(lr, dtype=np.float32)
+            lr = np.nan_to_num(lr, nan=0.0, posinf=0.0, neginf=0.0)
+            lr[lr < 0] = 0.0
+            out["lr_depth"] = lr
         meta = {"degradation": type(self).__name__, "seed": seed}
         meta.update(self.params())
         meta.update(normal_meta)

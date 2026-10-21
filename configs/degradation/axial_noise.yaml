@@ -6,8 +6,8 @@ type: axial_noise
 sigma_floor_m: 0.0012       # std at reference depth, metres
 sigma_depth_gain: 0.0019    # coefficient of (D - reference_depth_m)^2
 reference_depth_m: 0.4
-sigma_grazing_gain: 0.0008 # 0.00005  # grazing-angle term
-grazing_start_deg: 45.0 # 60.0
+sigma_grazing_gain: 0.00001  # grazing-angle term
+grazing_start_deg: 60.0
 theta_max_deg: 80.0
 sigma_max_m: 0.1
 z_min: null          # metres; null = no lower limit (Astra 2 datasheet: 0.6)
