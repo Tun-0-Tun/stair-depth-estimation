@@ -38,7 +38,7 @@ from data.degradation.active_stereo_astra2 import ActiveStereoAstra2Degradation,
 from data.degradation.base import BaseDegradation, register_degradation
 from utils.misc import sparse_to_dense_nn
 
-__all__ = ["AstraHardDegradation", "SEVERITY", "masked_downsample"]
+__all__ = ["AstraHardDegradation", "SEVERITY", "block_center_sparse", "masked_downsample"]
 
 # multipliers / amplitudes per severity. Starting values, see module docstring.
 SEVERITY: dict[str, dict[str, float]] = {
@@ -80,6 +80,18 @@ def masked_downsample(
     valid = cnt >= max(1.0, min_frac * scale * scale)
     lr = np.where(valid, tot / np.maximum(cnt, 1.0), 0.0).astype(np.float32)
     return lr, valid
+
+
+def block_center_sparse(depth: np.ndarray, scale: int, min_frac: float = 0.5) -> np.ndarray:
+    """Sparse completion-style input from the SAME degraded map the LR methods see: one pixel (the block centre)
+    per valid ``scale x scale`` block, value = block mean, 0 elsewhere.  For models trained on sparse points
+    (DEPTHOR: one pixel per dToF zone) -- a dense map with 60 % holes is not what they know."""
+    lr, valid = masked_downsample(depth, scale, min_frac)
+    out = np.zeros_like(depth, dtype=np.float32)
+    ys, xs = np.nonzero(valid)
+    cy, cx = np.minimum(ys * scale + scale // 2, depth.shape[0] - 1), np.minimum(xs * scale + scale // 2, depth.shape[1] - 1)
+    out[cy, cx] = lr[ys, xs]
+    return out
 
 
 def _smooth_field(rng: np.random.Generator, shape: tuple[int, int], sigma: float) -> np.ndarray:

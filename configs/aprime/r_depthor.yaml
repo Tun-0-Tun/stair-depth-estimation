@@ -1,5 +1,8 @@
 base: _base.yaml
 method: baseline
+# the dense-with-holes input made DEPTHOR collapse (AbsRel 1.58): it was trained on one point per 8x8 dToF zone.
+# sparse_from_lr feeds it the block centres of the same degraded x8 map instead.
 baseline:
   model: depthor
+  sparse_from_lr: true
   overrides: {}

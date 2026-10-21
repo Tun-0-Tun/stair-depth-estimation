@@ -42,6 +42,9 @@ def main() -> None:
     ap.add_argument("--out", default="outputs/aprime")
     ap.add_argument("overrides", nargs="*", help="applied to every row, e.g. train.epochs=1")
     a = ap.parse_args()
+    if a.only:  # `--only 1 2 train.epochs=15`: argparse puts the override into the --only list
+        a.overrides += [x for x in a.only if "=" in x]
+        a.only = [x for x in a.only if "=" not in x]
     rows = yaml.safe_load((REPO_ROOT / "configs/aprime/ablations.yaml").read_text())["rows"]
     root = REPO_ROOT / a.out / a.severity
     ov = [f"degradation.severity={a.severity}", *a.overrides]

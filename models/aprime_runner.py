@@ -149,11 +149,15 @@ def train(cfg: dict, out_dir: Path, smoke: int = 0) -> Path:
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=max(1, epochs * max(1, len(loader))))
     amp = device == "cuda" and t.get("amp", "bf16") == "bf16"
     log, step, best = (out_dir / "train_log.jsonl").open("a"), 0, float("inf")
+    t_start = time.perf_counter()
     first = last = None
     batch0 = None
     for ep in range(epochs if not smoke else 10**9):
         ds.set_epoch(ep)
         net.train()
+        t_ep, steps_ep = time.perf_counter(), 0
+        if device == "cuda":
+            torch.cuda.reset_peak_memory_stats()
         for batch in loader:
             if smoke:
                 batch0 = batch0 or batch
@@ -165,8 +169,8 @@ def train(cfg: dict, out_dir: Path, smoke: int = 0) -> Path:
             opt.zero_grad(set_to_none=True)
             losses["total"].backward()
             torch.nn.utils.clip_grad_norm_(net.parameters(), float(t.get("clip", 1.0)))
-            opt.step(); sched.step(); step += 1
-            row = {"step": step, "epoch": ep, **{k: float(v.detach()) for k, v in losses.items()}}
+            opt.step(); sched.step(); step += 1; steps_ep += 1
+            row = {"step": step, "epoch": ep, "t": round(time.perf_counter() - t_start, 1), **{k: float(v.detach()) for k, v in losses.items()}}
             assert np.isfinite(row["total"]), f"non-finite loss at step {step}: {row}"
             log.write(json.dumps(row) + "\n"); log.flush()
             first = row["total"] if first is None else first
@@ -178,7 +182,10 @@ def train(cfg: dict, out_dir: Path, smoke: int = 0) -> Path:
                 print(f"[smoke] OK: all losses finite, total {first:.4f} -> {last:.4f}")
                 return out_dir
         if not smoke and (ep + 1) % int(t.get("val_every", 1)) == 0:
+            t_train = time.perf_counter() - t_ep
             res = evaluate(cfg, lambda it: predict_aprime(net, it, device), val)
+            mem = f", peak GPU mem {torch.cuda.max_memory_allocated() / 2**30:.1f} GB" if device == "cuda" else ""
+            print(f"[time] epoch {ep}: train {t_train:.0f}s ({t_train / max(steps_ep, 1):.2f} s/step), val {time.perf_counter() - t_ep - t_train:.0f}s{mem}")
             print(f"[val] epoch {ep}: full absrel={res['full']['absrel']:.4f} rmse={res['full']['rmse']:.4f}")
             log.write(json.dumps({"epoch": ep, "val": res}) + "\n"); log.flush()
             torch.save({"model": net.state_dict(), "cfg": cfg, "epoch": ep}, out_dir / "last.pth")
@@ -207,6 +214,17 @@ def baseline_predictor(cfg: dict, device: str):
     model = build_baseline(mcfg, device=device, min_depth=float(mcfg.get("min_depth", d["min_depth"])),
                            max_depth=float(mcfg.get("max_depth", d["max_depth"])))
     model.load(mcfg.get("checkpoint"))
+    if spec.get("sparse_from_lr"):  # completion models: block-centre points of the same degraded input
+        from data.degradation.astra_hard import block_center_sparse
+
+        scale, frac = int(cfg["model"]["scale"]), float(cfg["degradation"].get("lr_min_frac", 0.5))
+
+        def predict(it):
+            raw = dict(it["raw"])
+            raw["sparse_depth"] = block_center_sparse(raw["sparse_depth"], scale, frac)
+            return model.predict_sample(raw)
+
+        return predict, model
     return lambda it: model.predict_sample(it["raw"]), model
 
 
@@ -214,7 +232,7 @@ def evaluate(cfg: dict, predict, ds: APrimeDataset, limit: int | None = None) ->
     d = cfg["data"]
     mc = MetricConfig(min_depth=float(d["min_depth"]), max_depth=float(d["max_depth"]), crop="none")
     acc = {z: DepthMetricAccumulator(mc, pooling="image") for z in ZONES}
-    K, geo, inv = intrinsics(cfg), [], []
+    K, geo, inv, frames = intrinsics(cfg), [], [], []
     has_masks = ds.cache is not None
     n = len(ds) if limit is None else min(limit, len(ds))
     if not has_masks:
@@ -224,10 +242,11 @@ def evaluate(cfg: dict, predict, ds: APrimeDataset, limit: int | None = None) ->
         it = ds[i]
         pred, raw, m = predict(it), it["raw"], it["masks"]
         gt, valid = raw["gt_depth"], raw["mask"]
-        acc["full"].update(pred, gt, valid)
+        fr = {"id": raw["meta"]["sample_id"], "stairs_id": raw["meta"].get("stairs_id")}
+        fr["full"] = {k: float(acc["full"].update(pred, gt, valid)[k]) for k in ("absrel", "rmse", "delta1")}
         if has_masks:
-            acc["stairs"].update(pred, gt, valid & (m["tread"] | m["riser"]))
-            acc["edge"].update(pred, gt, valid & m["band"])
+            fr["stairs"] = {k: float(v) for k, v in acc["stairs"].update(pred, gt, valid & (m["tread"] | m["riser"])).items() if k in ("absrel", "rmse", "delta1")}
+            fr["edge"] = {k: float(v) for k, v in acc["edge"].update(pred, gt, valid & m["band"]).items() if k in ("absrel", "rmse", "delta1")}
             if K is not None:
                 from metrics.stair_geometry import step_geometry_error
 
@@ -235,10 +254,12 @@ def evaluate(cfg: dict, predict, ds: APrimeDataset, limit: int | None = None) ->
                 if g:
                     geo.append(g)
         inv.append(float(it["input_invalid_frac"]))
+        frames.append(fr)
     out: dict[str, Any] = {}
     for z in ZONES:
         r = acc[z].compute()
         out[z] = {k: float(r[k]) for k in ("absrel", "rmse", "delta1")} | {"n": int(r.get("n_samples", 0))}
+    out["per_frame"] = frames  # for scripts/compare_rows.py (paired, per-staircase bootstrap)
     out["input_invalid_frac"] = float(np.mean(inv))
     out["n_frames"], out["seconds"] = n, time.perf_counter() - t0
     if geo:

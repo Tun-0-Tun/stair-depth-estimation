@@ -69,3 +69,15 @@ def test_train_smoke_end_to_end(tmp_path, monkeypatch, fusion, edge):
     rows = [json.loads(l) for l in (tmp_path / "out" / "train_log.jsonl").read_text().splitlines()]
     rows = [r for r in rows if "total" in r]
     assert all(np.isfinite(r["total"]) for r in rows) and rows[-1]["total"] < rows[0]["total"]
+
+
+def test_block_center_sparse_keeps_one_point_per_valid_block():
+    from data.degradation import masked_downsample
+    from data.degradation.astra_hard import block_center_sparse
+
+    d = np.full((32, 48), 2.0, np.float32)
+    d[:8, :8] = 0  # a hole block
+    sp = block_center_sparse(d, 8)
+    lr, valid = masked_downsample(d, 8)
+    assert (sp > 0).sum() == valid.sum() == 4 * 6 - 1
+    assert sp[12, 12] == pytest.approx(2.0) and sp[4, 4] == 0 and sp[0, 0] == 0
