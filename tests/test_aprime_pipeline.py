@@ -81,3 +81,14 @@ def test_block_center_sparse_keeps_one_point_per_valid_block():
     lr, valid = masked_downsample(d, 8)
     assert (sp > 0).sum() == valid.sum() == 4 * 6 - 1
     assert sp[12, 12] == pytest.approx(2.0) and sp[4, 4] == 0 and sp[0, 0] == 0
+
+
+def test_zone_center_sparse_one_point_per_valid_zone():
+    from data.degradation.astra_hard import zone_center_sparse
+
+    d = np.full((80, 160), 3.0, np.float32)
+    d[:10, :20] = 0  # the first zone is a hole
+    d[40:44, 60:80] = 1.0  # 40 % of one zone is near: the median must ignore it
+    sp = zone_center_sparse(d, (8, 8))
+    assert (sp > 0).sum() == 63 and sp[5, 10] == 0
+    assert np.allclose(sp[sp > 0], 3.0)

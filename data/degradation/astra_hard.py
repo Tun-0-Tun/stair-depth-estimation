@@ -38,7 +38,7 @@ from data.degradation.active_stereo_astra2 import ActiveStereoAstra2Degradation,
 from data.degradation.base import BaseDegradation, register_degradation
 from utils.misc import sparse_to_dense_nn
 
-__all__ = ["AstraHardDegradation", "SEVERITY", "block_center_sparse", "masked_downsample"]
+__all__ = ["AstraHardDegradation", "SEVERITY", "block_center_sparse", "masked_downsample", "zone_center_sparse"]
 
 # multipliers / amplitudes per severity. Starting values, see module docstring.
 SEVERITY: dict[str, dict[str, float]] = {
@@ -91,6 +91,22 @@ def block_center_sparse(depth: np.ndarray, scale: int, min_frac: float = 0.5) ->
     ys, xs = np.nonzero(valid)
     cy, cx = np.minimum(ys * scale + scale // 2, depth.shape[0] - 1), np.minimum(xs * scale + scale // 2, depth.shape[1] - 1)
     out[cy, cx] = lr[ys, xs]
+    return out
+
+
+def zone_center_sparse(depth: np.ndarray, grid: tuple[int, int] = (8, 8), min_frac: float = 0.1) -> np.ndarray:
+    """dToF-like input from the degraded map: the frame is cut into ``grid`` zones; each zone reports the median
+    of its valid pixels (if >= ``min_frac`` of the zone) as ONE point at the zone centre.  This is the
+    input DEPTHOR was trained on (8x8 zones, one pixel each); anything denser makes it ignore the measurements."""
+    h, w = depth.shape
+    out = np.zeros_like(depth, dtype=np.float32)
+    ys, xs = np.linspace(0, h, grid[0] + 1).astype(int), np.linspace(0, w, grid[1] + 1).astype(int)
+    for i in range(grid[0]):
+        for j in range(grid[1]):
+            z = depth[ys[i] : ys[i + 1], xs[j] : xs[j + 1]]
+            v = z[z > 0]
+            if v.size >= min_frac * z.size:
+                out[(ys[i] + ys[i + 1]) // 2, (xs[j] + xs[j + 1]) // 2] = np.median(v)
     return out
 
 

@@ -214,14 +214,17 @@ def baseline_predictor(cfg: dict, device: str):
     model = build_baseline(mcfg, device=device, min_depth=float(mcfg.get("min_depth", d["min_depth"])),
                            max_depth=float(mcfg.get("max_depth", d["max_depth"])))
     model.load(mcfg.get("checkpoint"))
-    if spec.get("sparse_from_lr"):  # completion models: block-centre points of the same degraded input
-        from data.degradation.astra_hard import block_center_sparse
+    mode = spec.get("sparse_input")  # None | "zones" | "block_centers": completion models need sparse points
+    if mode:
+        from data.degradation.astra_hard import block_center_sparse, zone_center_sparse
 
         scale, frac = int(cfg["model"]["scale"]), float(cfg["degradation"].get("lr_min_frac", 0.5))
+        grid = tuple(spec.get("grid", (8, 8)))
 
         def predict(it):
             raw = dict(it["raw"])
-            raw["sparse_depth"] = block_center_sparse(raw["sparse_depth"], scale, frac)
+            sp = raw["sparse_depth"]
+            raw["sparse_depth"] = zone_center_sparse(sp, grid) if mode == "zones" else block_center_sparse(sp, scale, frac)
             return model.predict_sample(raw)
 
         return predict, model

@@ -1,8 +1,10 @@
 base: _base.yaml
 method: baseline
-# the dense-with-holes input made DEPTHOR collapse (AbsRel 1.58): it was trained on one point per 8x8 dToF zone.
-# sparse_from_lr feeds it the block centres of the same degraded x8 map instead.
+# DEPTHOR was trained on ONE point per 8x8 dToF zone; denser input makes it ignore the measurements (AbsRel 1.58 on
+# the dense-with-holes map, 1.26 on block centres). sparse_input: zones feeds the median of each of the 8x8 zones of the
+# SAME degraded map, as one point at the zone centre. It sees far less than the SR methods -> label the row accordingly.
 baseline:
   model: depthor
-  sparse_from_lr: true
+  sparse_input: zones
+  grid: [8, 8]
   overrides: {}
