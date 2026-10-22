@@ -134,7 +134,7 @@ class AxialDegradation(BaseDegradation):
             noisy[noisy > self.z_max] = 0.0
         return {
             "sparse_depth": noisy,
-            "lr_depth": None,  # full-resolution sensor
+            "lr_depth": noisy,
             "meta": {
                 "theta_missing_ratio": theta_missing,
                 "valid_ratio": float((noisy > 0).mean()),

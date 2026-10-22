@@ -140,7 +140,7 @@ class LateralDegradation(BaseDegradation):
         )
         return {
             "sparse_depth": noisy,
-            "lr_depth": None,  # full-resolution sensor
+            "lr_depth": noisy,  # full-resolution sensor
             "meta": {
                 "theta_missing_ratio": theta_missing,
                 "valid_ratio": float((noisy > 0).mean()),

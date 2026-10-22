@@ -71,7 +71,7 @@ class SequentialDegradation(BaseDegradation):
             # one seed per step, drawn from the sample rng: reproducible per sample
             seed = int(rng.integers(2**31 - 1))
             out = step(prev, seed=seed, **kwargs)
-            prev = out["sparse_depth"]
+            prev = out["lr_depth"]  # out["sparse_depth"]
             meta[f"step{i}_{name}"] = out["meta"]
             calibrated = calibrated and out["meta"].get("calibrated") is not False
         meta["calibrated"] = calibrated

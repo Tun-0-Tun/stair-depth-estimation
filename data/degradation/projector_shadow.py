@@ -91,7 +91,7 @@ class ProjectorShadowDegradation(BaseDegradation):
         n_valid = max(int(valid.sum()), 1)
         return {
             "sparse_depth": sparse,
-            "lr_depth": None,  # full-resolution sensor
+            "lr_depth": sparse,  # full-resolution sensor
             "meta": {
                 "shadow_ratio": float(shadow.sum() / n_valid),
                 "valid_ratio": float((sparse > 0).mean()),
