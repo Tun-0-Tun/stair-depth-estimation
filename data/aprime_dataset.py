@@ -42,24 +42,46 @@ def resolve_cache(cfg: dict) -> str | None:
 
 
 def build_ours(cfg: dict, split: str, train: bool = False):
-    """``BaseDepthDataset`` for one split of the stairs-level split file, degradation attached."""
+    """``BaseDepthDataset`` for one split of the stairs-level split file, degradation attached.
+
+    ``degradation.preset: <name>`` takes the degradation from ``configs/degradation/<name>.yaml`` (the sensor chains
+    of data/degradation, e.g. ``sequence_bicubic_x8_lateral_projector_axial``) and ignores the other keys of the block;
+    otherwise the block itself is the (legacy) ``astra_hard`` config.
+    """
     d = dict(cfg["data"])
     deg = dict(cfg["degradation"])
-    deg["scale"] = int(cfg["model"]["scale"])
-    deg["stochastic"] = bool(train)
-    deg.setdefault("stair_cache_dir", resolve_cache(d))
-    deg.setdefault("mask_clean", d.get("mask_clean"))
+    preset = deg.get("preset")
+    if preset:
+        from utils.config import load_config
+
+        deg = dict(load_config("degradation", preset))
+    else:
+        deg["scale"] = int(cfg["model"]["scale"])
+        deg["stochastic"] = bool(train)
+        deg.setdefault("stair_cache_dir", resolve_cache(d))
+        deg.setdefault("mask_clean", d.get("mask_clean"))
     ds_cfg = {k: d[k] for k in ("name", "loader", "root", "crop", "target_size", "min_depth", "max_depth") if k in d}
     ds_cfg["split"] = split
     ds_cfg["stairs"] = load_split(d["split_file"])[split]
     ds_cfg["seed"] = int(cfg.get("seed", 0))
     ds_cfg["lr_scale"] = int(cfg["model"]["scale"])
-    return build_dataset(ds_cfg, degradation=build_degradation(deg))
+    extra = {}
+    degradation = build_degradation(deg)
+    if getattr(degradation, "uses_normals", False):  # normals are not in `ours`: estimate them from the clean GT
+        from data.norm import build_normal_map
+        from utils.config import load_config
+
+        nm = dict(load_config("normals", cfg.get("normals", "gt_cross")))
+        K = cfg["data"].get("intrinsics")  # frame K of the crop/resize (configs/dataset/ours.yaml)
+        if K:
+            nm.update(zip(("fx", "fy", "cx", "cy"), map(float, K), strict=True))
+        extra["normals"] = build_normal_map(nm)
+    return build_dataset(ds_cfg, degradation=degradation, **extra)
 
 
 class APrimeDataset(Dataset):
     def __init__(self, cfg: dict, split: str, train: bool = False, with_raw: bool = False) -> None:
-        self.cfg, self.train, self.with_raw = cfg, train, with_raw
+        self.cfg, self.train, self.with_raw, self._epoch = cfg, train, with_raw, 0
         self.base = build_ours(cfg, split, train)
         d, l = cfg["data"], cfg["loss"]
         self.scale = int(cfg["model"]["scale"])
@@ -75,7 +97,11 @@ class APrimeDataset(Dataset):
             raise ValueError("edge_weight / planar loss need StairNet masks: set data.stair_cache (mask_source != none)")
 
     def set_epoch(self, epoch: int) -> None:
-        self.base.degradation.epoch = epoch
+        if hasattr(self.base.degradation, "epoch"):  # astra_hard mixes the epoch into its own seed
+            self.base.degradation.epoch = epoch
+        elif self.train:  # sensor chains: a new but reproducible corruption every epoch via the loader seed
+            self.base.seed = int(self.cfg.get("seed", 0)) + 7919 * epoch
+        self._epoch = epoch
 
     def __len__(self) -> int:
         return len(self.base)
@@ -98,7 +124,11 @@ class APrimeDataset(Dataset):
 
     def __getitem__(self, i: int) -> dict[str, Any]:
         s = self.base[i]
-        lr, lr_valid = masked_downsample(s["sparse_depth"], self.scale, self.lr_min_frac)
+        if s["sparse_depth"].shape != s["gt_depth"].shape:  # chain that already works at low resolution: use its map as is
+            lr = np.asarray(s["lr_depth"], np.float32)
+            lr_valid = lr > 0
+        else:
+            lr, lr_valid = masked_downsample(s["sparse_depth"], self.scale, self.lr_min_frac)
         if lr_valid.any():
             dmin, dmax = float(lr[lr_valid].min()), float(lr[lr_valid].max())
         if not lr_valid.any() or dmax - dmin < 1e-6:  # degenerate frame: fall back to the sensor range
@@ -113,11 +143,11 @@ class APrimeDataset(Dataset):
             "gt_n": gt_n[None], "valid": s["mask"][None], "E": m["E"][None], "band": m["band"][None],
             "ignore": m["ignore"][None], "tread": m["tread"][None], "riser": m["riser"][None],
         }
-        if self.flip and np.random.default_rng([i, self.base.degradation.epoch]).random() < 0.5:
+        if self.flip and np.random.default_rng([i, self._epoch]).random() < 0.5:
             t = {k: np.ascontiguousarray(v[..., ::-1]) for k, v in t.items()}
         out = {k: torch.from_numpy(v) for k, v in t.items()}
         out["dmin"], out["dmax"] = torch.tensor([[[dmin]]]), torch.tensor([[[dmax]]])
-        out["input_invalid_frac"] = torch.tensor(float((s["sparse_depth"] <= 0).mean()))
+        out["input_invalid_frac"] = torch.tensor(float((s["sparse_depth"] <= 0).mean()))  # share of missing pixels of the input map
         if self.with_raw:
             out["raw"] = s
             out["masks"] = m

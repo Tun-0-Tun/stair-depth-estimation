@@ -1,0 +1,5 @@
+# Same chain as sequence_bicubic_x8_lateral_projector_axial, but the GT holes are filled before the x8 downsampling
+# (ours has ~15 % real holes; bicubic over zeros fabricates too-near depths there). NOT CALIBRATED for the Astra 2.
+# Needs a normal map (lateral_noise and axial_noise): estimated from the clean GT (configs/normals/gt_cross.yaml).
+type: sequential
+steps: [bicubic_x8_fill, lateral_noise, projector_shadow, axial_noise]

@@ -215,20 +215,25 @@ def baseline_predictor(cfg: dict, device: str):
                            max_depth=float(mcfg.get("max_depth", d["max_depth"])))
     model.load(mcfg.get("checkpoint"))
     mode = spec.get("sparse_input")  # None | "zones" | "block_centers": completion models need sparse points
-    if mode:
-        from data.degradation.astra_hard import block_center_sparse, zone_center_sparse
+    scale, frac = int(cfg["model"]["scale"]), float(cfg["degradation"].get("lr_min_frac", 0.5))
+    grid = tuple(spec.get("grid", (8, 8)))
 
-        scale, frac = int(cfg["model"]["scale"]), float(cfg["degradation"].get("lr_min_frac", 0.5))
-        grid = tuple(spec.get("grid", (8, 8)))
+    def prepare(it):
+        """Same input for every method; LR-native chains (data/degradation/sequential) leave holes in ``lr_depth``."""
+        from utils.misc import sparse_to_dense_nn
 
-        def predict(it):
-            raw = dict(it["raw"])
-            sp = raw["sparse_depth"]
-            raw["sparse_depth"] = zone_center_sparse(sp, grid) if mode == "zones" else block_center_sparse(sp, scale, frac)
-            return model.predict_sample(raw)
+        raw = dict(it["raw"])
+        lr_native = raw["sparse_depth"].shape != raw["gt_depth"].shape
+        if lr_native and (raw["lr_depth"] > 0).any():
+            raw["lr_depth"] = sparse_to_dense_nn(raw["lr_depth"])  # DuCos cannot take zeros
+        if mode:
+            from data.degradation.astra_hard import block_center_sparse, zone_center_sparse
 
-        return predict, model
-    return lambda it: model.predict_sample(it["raw"]), model
+            src = raw["sparse_depth"]
+            raw["sparse_depth"] = zone_center_sparse(src, grid) if mode == "zones" else block_center_sparse(src, scale, frac)
+        return raw
+
+    return (lambda it: model.predict_sample(prepare(it))), model
 
 
 def evaluate(cfg: dict, predict, ds: APrimeDataset, limit: int | None = None) -> dict[str, Any]:

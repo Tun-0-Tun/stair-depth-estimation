@@ -35,7 +35,9 @@ def sh(cmd: list[str], dry: bool) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--severity", default="strong")
+    ap.add_argument("--severity", default="strong", help="legacy astra_hard severity (light | medium | strong)")
+    ap.add_argument("--preset", help="degradation preset from configs/degradation/ (e.g. sequence_bicubic_x8_lateral_projector_axial); "
+                    "replaces --severity, results go to outputs/aprime/<preset>/")
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")
@@ -46,8 +48,10 @@ def main() -> None:
         a.overrides += [x for x in a.only if "=" in x]
         a.only = [x for x in a.only if "=" not in x]
     rows = yaml.safe_load((REPO_ROOT / "configs/aprime/ablations.yaml").read_text())["rows"]
-    root = REPO_ROOT / a.out / a.severity
-    ov = [f"degradation.severity={a.severity}", *a.overrides]
+    tag = a.preset or a.severity
+    root = REPO_ROOT / a.out / tag
+    ov = [f"degradation.preset={a.preset}"] if a.preset else [f"degradation.severity={a.severity}"]
+    ov += a.overrides
     res: dict[str, dict] = {}
 
     def result(row, split="test"):
@@ -103,7 +107,7 @@ def main() -> None:
     md += ["| " + " | ".join(fmt(v) for v in r) + " |" for r in flat]
     note = ("\n\nGT = the Astra 2 sensor's own depth (no independent reference): numbers rank methods, "
             "they are not accuracy.  delta1 uses the 1.25 threshold.  Split by staircase; "
-            f"severity={a.severity}; input_invalid_frac = mean share of invalid pixels in the HR input.\n")
+            f"degradation={tag}; input_invalid_frac = mean share of invalid pixels in the HR input.\n")
     (root / "ablation.md").write_text("\n".join(md) + note)
     print("\n".join(md))
 

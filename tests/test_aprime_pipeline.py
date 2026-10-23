@@ -92,3 +92,34 @@ def test_zone_center_sparse_one_point_per_valid_zone():
     sp = zone_center_sparse(d, (8, 8))
     assert (sp > 0).sum() == 63 and sp[5, 10] == 0
     assert np.allclose(sp[sp > 0], 3.0)
+
+
+def test_sensor_chain_preset_runs_through_the_pipeline(tmp_path, monkeypatch):
+    """The main degradation (lateral noise -> projector shadow -> axial noise at x8) feeds A' and the baseline input."""
+    from PIL import Image
+
+    from data.aprime_dataset import APrimeDataset
+    from data.stairnet.cache import save_masks
+    from models.aprime_runner import load_cfg, train
+
+    root = make(tmp_path / "ours" / "sample")
+    for f in root.glob("s*_rgb.png"):
+        rgb = np.asarray(Image.open(f))
+        cls = np.where(rgb[..., 0] > 120, 1, np.where(rgb[..., 2] > 100, 2, 0)).astype(np.uint8)
+        save_masks(tmp_path / "ours" / "stairnet_cache", f.stem[:-4], cls, np.ones(cls.shape, np.float32))
+    (tmp_path / "split.json").write_text(json.dumps({"train": [1, 2, 3, 4], "val": [5], "test": [6]}))
+    monkeypatch.setenv("STAIR_DATA_ROOT", str(tmp_path))
+    cfg = load_cfg("configs/aprime/_base.yaml", [
+        f"data.split_file={tmp_path / 'split.json'}", "data.crop=null", "data.target_size=null", "model.checkpoint=null",
+        "degradation.preset=sequence_bicubic_x8_lateral_projector_axial", "train.workers=0", "device=cpu",
+        "data.intrinsics=[150,150,88,64]"])
+    cfg["name"] = "smoke_chain"
+    ds = APrimeDataset(cfg, "train", train=True, with_raw=True)
+    it = ds[0]
+    h, w = it["raw"]["gt_depth"].shape
+    assert it["lr"].shape == (1, h // 8, w // 8) and it["raw"]["sparse_depth"].shape == (h // 8, w // 8)
+    assert 0.0 < float((it["lr_valid"] > 0).float().mean()) <= 1.0
+    a = ds[0]["lr"].clone()
+    ds.set_epoch(1)  # training: a new reproducible corruption every epoch
+    assert not np.allclose(a.numpy(), ds[0]["lr"].numpy())
+    train(cfg, tmp_path / "out", smoke=3)
