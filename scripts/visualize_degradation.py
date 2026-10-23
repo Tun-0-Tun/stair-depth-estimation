@@ -45,6 +45,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="apply --degradation to GT even if the dataset ships a real sensor input",
     )
+    p.add_argument(
+        "--normals",
+        default="gt_cross",
+        help="normal-map method in configs/normals/ used when the dataset has no normals "
+        "(only for degradations that need them) (default: gt_cross)",
+    )
+    p.add_argument(
+        "--force-normals",
+        action="store_true",
+        help="compute normals with --normals even if the dataset provides them",
+    )
     p.add_argument("-n", type=int, default=5, help="number of samples (default: 5)")
     p.add_argument(
         "--input",
@@ -58,11 +69,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def load_samples(
-    dataset: str, degradation: str | None, n: int, force: bool = False
+    dataset: str,
+    degradation: str | None,
+    n: int,
+    force: bool = False,
+    normals: str | None = None,
+    force_normals: bool = False,
 ) -> tuple[list[dict], bool]:
     """Return the first ``n`` samples and whether their input is uncalibrated."""
     from data.degradation import build_degradation
     from data.loaders import build_dataset
+    from data.norm import build_normal_map
     from utils.config import load_config
 
     deg = None
@@ -73,6 +90,8 @@ def load_samples(
         degradation=deg,
         max_samples=n,
         force_degradation=force,
+        normals=build_normal_map(dict(load_config("normals", normals))) if normals else None,
+        force_normals=force_normals,
     )
 
     uncalibrated = False
@@ -83,7 +102,9 @@ def load_samples(
         )
     elif deg is not None:
         # the loader drops the degradation's meta, so ask the model directly
-        probe = deg(np.ones((4, 4), dtype=np.float32), seed=0)["meta"]
+        # (a dummy normal: only the "calibrated" flag is read, not the result)
+        dummy = np.broadcast_to(np.float32([0, 0, 1]), (4, 4, 3))
+        probe = deg(np.ones((4, 4), dtype=np.float32), seed=0, normal=dummy)["meta"]
         uncalibrated = probe.get("calibrated") is False
     return [ds[i] for i in range(len(ds))], uncalibrated
 
@@ -172,7 +193,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         samples, uncalibrated = load_samples(
-            args.dataset, args.degradation, args.n, force=args.force_degradation
+            args.dataset,
+            args.degradation,
+            args.n,
+            force=args.force_degradation,
+            normals=args.normals,
+            force_normals=args.force_normals,
         )
     except (FileNotFoundError, RuntimeError, ValueError, KeyError) as e:
         # the loaders' messages already say what to fix (missing data, no --degradation)

@@ -1,0 +1,7 @@
+# Three sensor models applied in order: lateral noise -> projector shadows -> axial noise.
+# NOT CALIBRATED for the Astra 2: every step is uncalibrated, so any result produced with this
+# file must carry "uncalibrated" in the notes column.
+# Needs a normal map (lateral_noise and axial_noise): the dataset provides one, or pass --normals <preset>.
+# Each step after the first reads the previous step's sparse_depth; the steps are the preset names below.
+type: sequential
+steps: [bicubic_x8, lateral_noise, projector_shadow, axial_noise]

@@ -34,9 +34,17 @@ import _bootstrap  # noqa: F401  (must come first: puts the repo root on sys.pat
 from baselines.base import BASELINE_REGISTRY, build_baseline, model_depth_range
 from data.degradation import build_degradation
 from data.loaders import build_dataset
+from data.norm import build_normal_map
 from metrics.depth_metrics import METRIC_NAMES, DepthMetricAccumulator, MetricConfig, format_metrics
 from metrics.runtime_metrics import RuntimeConfig, measure_runtime
-from utils.config import CONFIG_ROOT, Config, _read_yaml, apply_overrides, load_experiment
+from utils.config import (
+    CONFIG_ROOT,
+    Config,
+    _read_yaml,
+    apply_overrides,
+    load_config,
+    load_experiment,
+)
 from utils.misc import set_seed
 from utils.results import RunRecorder, config_hash, find_summary_row, get_tracker
 
@@ -53,6 +61,16 @@ def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
     p.add_argument("--model", help="model config name (configs/model/*.yaml)")
     p.add_argument("--dataset", help="dataset config name (configs/dataset/*.yaml)")
     p.add_argument("--degradation", help="degradation config name (configs/degradation/*.yaml)")
+    p.add_argument(
+        "--normals",
+        help="normal-map method in configs/normals/ used when the dataset has no normals "
+        "(only for degradations that need them)",
+    )
+    p.add_argument(
+        "--force-normals",
+        action="store_true",
+        help="compute normals with --normals even if the dataset provides them",
+    )
     p.add_argument("--experiment", help="experiment config name (configs/experiment/*.yaml)")
     p.add_argument("--limit", type=int, help="evaluate at most N samples")
     p.add_argument("--device", help="cpu | cuda | mps | auto")
@@ -104,6 +122,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args, overrides = parse_args(list(sys.argv[1:] if argv is None else argv))
     cfg = compose(args, overrides)
 
+    # normals live in the config (rule: one experiment = one YAML), so they enter the hash
+    if args.normals:
+        cfg.normals = dict(load_config("normals", args.normals))
+    if args.force_normals:
+        cfg.force_normals = True
     if args.device:
         cfg.device = args.device
     if args.limit is not None:
@@ -151,6 +174,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     dataset = build_dataset(
         dataset_cfg,
         degradation=degradation,
+        normals=build_normal_map(dict(cfg.normals)) if cfg.get("normals") else None,
+        force_normals=bool(cfg.get("force_normals")),
         **({"max_samples": eval_cfg["max_samples"]} if eval_cfg.get("max_samples") else {}),
     )
     print(f"[data] {dataset.info.name}: {len(dataset)} samples, modality={dataset.info.modality}")

@@ -59,6 +59,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--datasets", nargs="*", default=None, help=f"any of {_names('dataset')}")
     p.add_argument("--models", nargs="*", default=None, help=f"any of {_names('model')}")
     p.add_argument("--degradation", default=None, help="one degradation for the whole matrix")
+    p.add_argument(
+        "--normals",
+        help="normal-map method in configs/normals/ used when the dataset has no normals "
+        "(only for degradations that need them)",
+    )
+    p.add_argument(
+        "--force-normals",
+        action="store_true",
+        help="compute normals with --normals even if the dataset provides them",
+    )
     p.add_argument("--experiments", nargs="*", default=None, help=f"any of {_names('experiment')}")
     p.add_argument("--auto", action="store_true", help="skip cells that cannot run here")
     p.add_argument("--limit", type=int, default=None, help="samples per cell")
@@ -76,6 +86,10 @@ def _cell_args(dataset: str, model: str, args: argparse.Namespace) -> list[str]:
     argv = ["--dataset", dataset, "--model", model]
     if args.degradation:
         argv += ["--degradation", args.degradation]
+    if args.normals:
+        argv += ["--normals", args.normals]
+    if args.force_normals:
+        argv += ["--force-normals"]
     if args.limit is not None:
         argv += ["--limit", str(args.limit)]
     if args.device:

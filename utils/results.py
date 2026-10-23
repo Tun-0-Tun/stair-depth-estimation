@@ -205,6 +205,8 @@ def config_hash(cfg: Mapping[str, Any]) -> str:
         return x
 
     blob = {k: clean(cfg.get(k)) for k in ("dataset", "degradation", "model", "eval", "seed")}
+    # normals only matter for degradations that use them; absent keys keep old hashes
+    blob.update({k: clean(cfg[k]) for k in ("normals", "force_normals") if cfg.get(k)})
     return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 

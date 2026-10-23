@@ -56,6 +56,11 @@ Derivation rules (applied in ``__getitem__``, never in an adapter)
   records it.
 * ``force_degradation=True`` -> any native input is discarded and the sample is
   treated as GT only (previous rule); ``meta["forced_degradation"]`` is True.
+* normals: a degradation with ``uses_normals`` gets the dataset's normal map
+  (``raw["normal"]``) if there is one, else one estimated from GT with ``normals``
+  (a ``data.norm`` method); ``force_normals=True`` estimates even if the dataset has
+  them.  The map used comes back as the optional sample key ``normals`` (H, W, 3)
+  and ``meta["normal_source"]`` says where it came from.
 """
 
 from __future__ import annotations
@@ -190,6 +195,8 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         seed: int = 0,
         strict: bool = True,
         simulate_from: str | None = None,
+        normals: Any = None,
+        force_normals: bool = False,
         **kwargs: Any,
     ) -> None:
         if simulate_from not in (None, "gt", "sensor"):
@@ -205,6 +212,8 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         self.split = split
         self.degradation = degradation
         self.force_degradation = bool(force_degradation)
+        self.normals = normals  # data.norm estimator, used when the dataset has no normals
+        self.force_normals = bool(force_normals)
         self.target_size = tuple(target_size) if target_size else None
         self.lr_scale = int(lr_scale)
         self.seed = int(seed)
@@ -301,6 +310,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             sensor_mask = np.nan_to_num(np.asarray(sparse, dtype=np.float32)) > 0
 
         # ---- produce the input(s) --------------------------------------
+        normals_used = normal_source = None
         deg_src = gt
         if self.simulate_from == "sensor":
             if sparse is not None:
@@ -318,14 +328,18 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
                     f"[{self.info.name}] sample {idx} has no degraded input and no degradation "
                     "model was configured."
                 )
-            ctx = (
-                {"rgb": rgb, "sample_id": str(raw.get("sample_id", idx))}
-                if getattr(self.degradation, "needs_context", False)
-                else {}
-            )
-            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx, **(
-                {"context": ctx} if ctx else {}
-            ))
+            deg_kwargs: dict[str, Any] = {}
+            if getattr(self.degradation, "uses_normals", False):
+                deg_kwargs = {
+                    "normal": raw.get("normal"),  # None if the dataset has no normals
+                    "normal_estimator": self.normals,
+                    "force_normals": self.force_normals,
+                }
+            if getattr(self.degradation, "needs_context", False):
+                deg_kwargs["context"] = {"rgb": rgb, "sample_id": str(raw.get("sample_id", idx))}
+            deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx, **deg_kwargs)
+            normals_used = deg.get("normals")
+            normal_source = deg["meta"].get("normal_source")
             sparse = deg["sparse_depth"]
             lr = deg.get("lr_depth")
             modality = "synthetic"
@@ -382,7 +396,7 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         }
         meta.update(raw.get("meta", {}) or {})
 
-        out = {
+        sample = {
             "rgb": rgb,
             "gt_depth": gt,
             "sparse_depth": sparse,
@@ -392,8 +406,11 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             "meta": meta,
         }
         if sensor_mask is not None:  # optional key: only datasets with a native sparse input
-            out["sensor_mask"] = sensor_mask
-        return out
+            sample["sensor_mask"] = sensor_mask
+        if normals_used is not None:  # optional key: only when a normals-using degradation ran
+            sample["normals"] = np.asarray(normals_used, dtype=np.float32)
+            meta["normal_source"] = normal_source
+        return sample
 
     # ------------------------------------------------------------- splits
 

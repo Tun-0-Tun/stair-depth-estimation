@@ -8,6 +8,6 @@ fx: 1024                      # pixels, for 640x480; rescale with the image
 fy: null                      # pixels; null -> fx
 cx: null                      # pixels; null -> image centre
 cy: null
-depth_tol_rel: 0.01
+depth_tol_rel: 0.05 #0.01
 slope_bias: 0.5
 fov_clip: false

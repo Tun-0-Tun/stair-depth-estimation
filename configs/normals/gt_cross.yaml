@@ -1,0 +1,10 @@
+# Normals from GT depth by cross product of back-projected tangents (data/norm/cross_product.py).
+# fx/fy/cx/cy are PLACEHOLDERS (~640x480), not a calibration of any sensor. They are used only when the
+# sample carries no meta["intrinsics"]; a result produced with them must carry "uncalibrated" in notes.
+type: cross
+fx: 570          # pixels, for 640x480; rescale with the image
+fy: null         # pixels; null -> fx
+cx: null         # pixels; null -> image centre
+cy: null
+depth_edge_rel: 0.05   # neighbour depth jump > 5% of depth => discontinuity => invalid
+smooth_sigma: 0.0      # Gaussian sigma on valid depth before differencing; 0 = off

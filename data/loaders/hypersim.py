@@ -106,7 +106,11 @@ class HyperSimDataset(BaseDepthDataset):
         self.camera_params = camera_params
         self.scenes = list(scenes) if scenes else None
         self.frame_stride = max(1, int(frame_stride))
-        self.load_normals = bool(load_normals)
+        # a degradation that consumes normals (e.g. axial_noise) switches loading on itself
+        # not needed when the estimator replaces them anyway (force_normals)
+        self.load_normals = (
+            bool(load_normals) or bool(getattr(kwargs.get("degradation"), "uses_normals", False))
+        ) and not kwargs.get("force_normals", False)
         self._intrinsics: dict[str, np.ndarray] | None = None
         self._scale_cache: dict[tuple[str, int, int], np.ndarray] = {}
         super().__init__(root=root, split=split, **kwargs)
@@ -239,7 +243,7 @@ class HyperSimDataset(BaseDepthDataset):
             # loop can pick it up without every loader growing an eighth key.
             meta["normal_path"] = str(record["normal"])
 
-        return {
+        raw: dict[str, Any] = {
             "rgb": rgb,
             "gt_depth": depth.astype(np.float32),
             "sample_id": record["id"],
@@ -247,3 +251,7 @@ class HyperSimDataset(BaseDepthDataset):
             "depth_path": str(record["depth"]),
             "meta": meta,
         }
+        if self.load_normals and record["normal"] is not None:
+            # (H, W, 3) camera-space normals; only the degradation consumes them
+            raw["normal"] = self._read_hdf5(record["normal"])
+        return raw
