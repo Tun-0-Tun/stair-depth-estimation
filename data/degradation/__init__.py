@@ -14,6 +14,7 @@ from data.degradation.lateral import LateralDegradation
 from data.degradation.projector_shadow import ProjectorShadowDegradation
 from data.degradation.sequential import SequentialDegradation
 from data.degradation.sr_downsample import BicubicSRDegradation, RandomSparseDegradation
+from data.degradation.theta_dropout import ThetaDropoutDegradation
 
 __all__ = [
     "DEGRADATION_REGISTRY",
@@ -27,6 +28,7 @@ __all__ = [
     "ProjectorShadowDegradation",
     "RandomSparseDegradation",
     "SequentialDegradation",
+    "ThetaDropoutDegradation",
     "build_degradation",
     "register_degradation",
 ]

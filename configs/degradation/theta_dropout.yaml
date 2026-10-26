@@ -1,0 +1,15 @@
+# Theta-dependent missing values - NOT CALIBRATED for the Astra 2. Any result produced with this
+# file must carry "uncalibrated" in the notes column.
+# Needs a normal map: the dataset provides one (e.g. hypersim normal_cam), or pass --normals <preset>
+# (configs/normals) to estimate it from GT depth; --force-normals estimates even if provided.
+# Missing fraction: p0 for theta <= theta_0, then p0 + slope_per_deg * (theta - theta_0), capped at p_max.
+type: theta_dropout
+theta_0_deg: 60.0
+p0: 0.0
+slope_per_deg: 0.04   # fraction per degree: +4% missing per degree above theta_0 (100% at 85 deg)
+p_max: 1.0
+z_min: null          # metres; null = no lower limit (Astra 2 datasheet: 0.6)
+z_max: null          # metres; null = no upper limit (Astra 2 datasheet: 8.0)
+normal_resize_mode: nearest # nearest | bilinear
+angle_reference: optical_axis  # optical_axis | viewing_ray
+fill_missing_theta: true
