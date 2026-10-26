@@ -24,7 +24,10 @@ ZM = [("full", "absrel"), ("full", "rmse"), ("stairs", "absrel"), ("stairs", "rm
 
 
 def load(d: Path, rid: str):
-    r = json.loads((d / rid / "test.json").read_text())
+    f = d / rid / "test.json"
+    if not f.exists():
+        return None
+    r = json.loads(f.read_text())
     if "per_frame" not in r:
         raise SystemExit(f"{d / rid / 'test.json'} has no per_frame: re-run eval_aprime.py on best.pth first")
     return {f["id"]: f for f in r["per_frame"]}
@@ -44,13 +47,18 @@ def main() -> None:
     print("| " + " | ".join(head) + " |\n|" + "---|" * len(head))
     for rid in a.rows:
         cur = load(d, rid)
-        ids = [i for i in ref if i in cur]
+        if cur is None:
+            print(f"| {rid} | " + " | ".join(["not run yet"] * len(ZM)) + " |")
+            continue
+        ids = [i for i in ref if i in cur]  # frames present in both rows
         line = [rid]
         for z, m in ZM:
             by = defaultdict(list)  # staircase -> (ref, cur) per-frame pairs (frames present in both zones)
             for i in ids:
                 if z in ref[i] and z in cur[i]:
-                    by[ref[i]["stairs_id"]].append((ref[i][z][m], cur[i][z][m]))
+                    a_, b_ = ref[i][z].get(m), cur[i][z].get(m)
+                    if a_ is not None and b_ is not None and np.isfinite(a_) and np.isfinite(b_):  # zone empty in this frame -> NaN: skip
+                        by[ref[i]["stairs_id"]].append((a_, b_))
             st = list(by)
             if not st:
                 line.append("n/a")
