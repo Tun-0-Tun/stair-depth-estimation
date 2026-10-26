@@ -1,0 +1,29 @@
+# Drop the pixels that are close to a depth/normal edge - NOT CALIBRATED.
+# All numbers are hand-set defaults, not fitted to Astra 2 captures. Any result produced with
+# this file must carry "uncalibrated" in the notes column.
+type: edge_dropout
+edge_method: plane               # plane (slope-proof point-to-plane test) | range (depth range in a window)
+tau_n_deg: 10.0                  # a neighbour normal further than this (deg) makes an edge pixel
+window: 3                        # odd neighbourhood for the normal-jump test (and the range method)
+# plane method
+tau_plane_rel: 0.02              # neighbour farther than this x z from the tangent plane = edge (2 cm per m)
+step_px: 4                       # distance to the neighbours the plane test looks at
+normal_smooth_px: 5              # median filter on normals before the normal-jump test
+normal_step_px: 4                # normal-jump test compares normals this many pixels apart (adjacent ones are noise)
+min_edge_px: 40                  # connected edge groups smaller than this are removed as noise specks (both methods)
+close_px: 1                      # closing iterations before that, so one noisy pixel does not break a real edge
+far_side_only: false             # true: mark only the far side of depth steps (the side stereo loses)
+fx: 570                          # pixels, ~640x480; rescale with the image (hypersim: set from its intrinsics)
+fy: null                         # pixels; null -> fx
+cx: null                         # pixels; null -> image centre
+cy: null
+# range method
+tau_z: 0.05                      # relative depth range (max-min)/z above this makes an edge pixel
+link_px: 6.0                     # edge pixels closer than this belong to the same patch
+patch_len_px: [20, 200]          # a patch with more edge pixels than its target length is cut along the edge; target drawn log-uniformly (short and long patches)
+p_drop: 0.5                      # probability that a patch of edge pixels is dropped
+radius_px: 4.0                 # a pixel within this distance of an edge pixel is dropped
+radius_jitter: 0.5               # radius varies smoothly across the image: radius * (1 + jitter * noise)
+noise_sigma_px: 16.0             # correlation length of that variation
+octaves: 3
+max_drop_frac: 0.3               # dropped share of valid pixels never exceeds this (radius shrinks to fit)

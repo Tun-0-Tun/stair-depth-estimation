@@ -10,6 +10,7 @@ from data.degradation.base import (
     register_degradation,
 )
 from data.degradation.dtof_sim import DToFSimDegradation
+from data.degradation.edge_dropout import EdgeDropoutDegradation
 from data.degradation.lateral import LateralDegradation
 from data.degradation.projector_shadow import ProjectorShadowDegradation
 from data.degradation.sequential import SequentialDegradation
@@ -23,6 +24,7 @@ __all__ = [
     "BaseDegradation",
     "BicubicSRDegradation",
     "DToFSimDegradation",
+    "EdgeDropoutDegradation",
     "IdentityDegradation",
     "LateralDegradation",
     "ProjectorShadowDegradation",
