@@ -10,5 +10,6 @@ rows:
   - {id: "3b", name: "+ edge_weight=gaussian",               config: a3b_edge_gaussian.yaml, kind: train}
   - {id: "4",  name: "+ planar loss",                        config: a4_planar.yaml,        kind: train, requires: intrinsics}
   - {id: "5",  name: "all (best of 2*, 3*)",                 config: a5_all.yaml,           kind: train, combine: true}
+  - {id: "6",  name: "planar loss + Gaussian edge weight", config: a6_planar_edge.yaml, kind: train, requires: intrinsics}
   - {id: "DuCos",  name: "DuCos",   config: r_ducos.yaml,   kind: eval}
   - {id: "DEPTHOR", name: "DEPTHOR v1 (8x8 zone input)", config: r_depthor.yaml, kind: eval}
