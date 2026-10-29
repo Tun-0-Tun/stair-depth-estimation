@@ -39,9 +39,19 @@ def main() -> None:
     ap.add_argument("--rows", nargs="+", required=True)
     ap.add_argument("--dir", default="outputs/aprime/strong")
     ap.add_argument("--n-boot", type=int, default=5000)
+    ap.add_argument("--subset", help="mask_quality.json (scripts/mask_quality.py): compare only frames selected by --min/--max-score")
+    ap.add_argument("--min-score", type=float, default=None)
+    ap.add_argument("--max-score", type=float, default=None)
     a = ap.parse_args()
     d = REPO_ROOT / a.dir
     ref = load(d, a.ref)
+    if a.subset:
+        q = json.loads(Path(a.subset).read_text())
+        lo = -np.inf if a.min_score is None else a.min_score
+        hi = np.inf if a.max_score is None else a.max_score
+        keep = {i for i, r in q.items() if np.isfinite(r["score"]) and lo <= r["score"] <= hi}
+        print(f"subset: {len(keep)} frames with {lo} <= score <= {hi}\n")
+        ref = {i: f for i, f in ref.items() if i in keep}
     rng = np.random.default_rng(0)
     head = ["row"] + [f"{z} {m}" for z, m in ZM]
     print("| " + " | ".join(head) + " |\n|" + "---|" * len(head))
