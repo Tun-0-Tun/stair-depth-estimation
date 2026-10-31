@@ -31,6 +31,7 @@ def main() -> None:
     ap.add_argument("--cache", default="ours/stairnet_cache")
     ap.add_argument("--out", default="outputs/stairnet_viz")
     ap.add_argument("--per-stairs", type=int, default=2)
+    ap.add_argument("--ids", nargs="*", help="only these frames (e.g. the lowest mask_quality.py scores) instead of the per-staircase pick")
     ap.add_argument("--mode", default="gaussian")
     ap.add_argument("--band-px", type=float, default=6)
     ap.add_argument("--conf-thr", type=float, default=0.7)
@@ -42,7 +43,11 @@ def main() -> None:
     by = defaultdict(list)
     for i, r in enumerate(ds.records):
         by[r["meta"].get("stairs_id")].append(i)
-    picks = [i for v in by.values() for i in sorted({v[0], v[len(v) // 2]})[: a.per_stairs]]
+    if a.ids:
+        pos = {r["id"]: i for i, r in enumerate(ds.records)}
+        picks = [pos[x] for x in a.ids]
+    else:
+        picks = [i for v in by.values() for i in sorted({v[0], v[len(v) // 2]})[: a.per_stairs]]
     out = REPO_ROOT / a.out
     out.mkdir(parents=True, exist_ok=True)
     tiles = []
