@@ -24,14 +24,16 @@ import torch
 
 from data.aprime_dataset import APrimeDataset
 from models.aprime_runner import intrinsics, load_cfg
+from metrics.stair_geometry import tread_levels
 from models.planar_loss import box_smooth, normals_from_depth, robust_up
 from utils.misc import REPO_ROOT
 
 
 def frame_quality(gt, valid, m, K) -> dict:
     tread, riser, band, ign = (np.asarray(m[k], bool) for k in ("tread", "riser", "band", "ignore"))
-    out = {"stair_share": float((tread | riser).mean()), "tread_inlier": float("nan"),
-           "riser_inlier": float("nan"), "score": float("nan")}
+    out = {"stair_share": float((tread | riser).mean()), "riser_share": float(riser.mean()),
+           "tread_inlier": float("nan"), "riser_inlier": float("nan"), "score": float("nan"),
+           "n_levels": 0, "stair_like": False}
     t = lambda a: torch.from_numpy(np.ascontiguousarray(a))[None, None]  # noqa: E731
     z, v = box_smooth(t(gt.astype(np.float32)), t(valid), 5)
     n, ok = normals_from_depth(z, K, v)
@@ -46,6 +48,9 @@ def frame_quality(gt, valid, m, K) -> dict:
     if rsel.sum() > 100:
         out["riser_inlier"] = float((cos[rsel] < 0.5).float().mean())
     out["score"] = out["tread_inlier"]
+    out["n_levels"] = tread_levels(gt, tread & valid & ~band, K, up[0].numpy().astype(np.float64))
+    # a real staircase: treads at >= 2 heights AND risers present; flat ground with false "tread" blobs has one level
+    out["stair_like"] = bool(out["n_levels"] >= 2 and out["riser_share"] >= 0.02)
     return out
 
 
@@ -75,6 +80,9 @@ def main() -> None:
               + "  ".join(f"p{p}={np.percentile(sc[ok], p):.2f}" for p in (10, 25, 50, 75, 90)))
         for thr in (0.4, 0.6, 0.8):
             print(f"  frames with score >= {thr}: {(sc[ok] >= thr).sum()} of {len(res)}")
+    sl = np.array([r["stair_like"] for r in res.values()])
+    print(f"stair-like frames (>= 2 tread heights and risers present): {sl.sum()} of {len(res)};"
+          f" with score >= 0.6 but NOT stair-like (e.g. flat ground with false blobs): {(sl == False)[ok & (sc >= 0.6)].sum() if ok.any() else 0}")  # noqa: E712
     (REPO_ROOT / a.out).write_text(json.dumps(res, indent=1))
     print("->", a.out)
 

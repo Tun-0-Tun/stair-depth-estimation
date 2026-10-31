@@ -79,3 +79,19 @@ def step_geometry_error(pred, gt, tread, K, n_steps: int = 3, min_px: int = 1500
         out[f"{k}_abs"] = np.abs(p[k] - g[k])
         out[f"{k}_rel"] = np.abs(p[k] - g[k]) / np.maximum(np.abs(g[k]), 1e-6)
     return out
+
+
+def tread_levels(gt, tread, K, up, bin_m: float = 0.04, min_px: int = 300) -> int:
+    """Number of distinct heights the tread pixels sit at (along the GT "up" vector).
+
+    A staircase has several (steps ~15 cm apart); flat ground with a few mislabelled "tread" blobs has one.
+    Heights are binned (``bin_m``), bins with >= ``min_px`` pixels count, adjacent bins merge into one level.
+    """
+    m = tread & (gt > 0)
+    if m.sum() < min_px:
+        return 0
+    h = (_points(gt.astype(np.float64), K)[m]) @ up
+    bins = np.floor((h - h.min()) / bin_m).astype(int)
+    counts = np.bincount(bins)
+    full = counts >= min_px
+    return int(np.sum(full & ~np.concatenate([[False], full[:-1]])))  # runs of adjacent filled bins

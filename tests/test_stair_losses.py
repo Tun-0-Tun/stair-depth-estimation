@@ -202,3 +202,18 @@ def test_planar_gating_ignores_inconsistent_labels(stairs):
     l = planar_loss(tens(z), tens(z), tens(valid, torch.bool), tens(junk & (tr | ri), torch.bool),
                     tens(np.zeros_like(ri), torch.bool), tens(band, torch.bool), K, min_tread_px=200).item()
     assert l < 1e-3 and base < 1e-3
+
+
+def test_tread_levels_tell_a_staircase_from_flat_ground_with_false_blobs():
+    from metrics.stair_geometry import tread_levels, up_vector
+
+    z, tr, ri = staircase(z0=2.6)
+    up = up_vector(z, tr, K)
+    assert tread_levels(z, tr, K, up) >= 3  # floor + several steps
+    # flat floor seen from above, with blobs labelled "tread"
+    v = np.mgrid[:H, :W][0].astype(np.float32)
+    floor = (0.9 * K[1] / np.maximum(v - K[3] + 40, 1.0)).astype(np.float32)  # plane y = 0.9 m below the camera
+    blobs = np.zeros((H, W), bool)
+    blobs[150:200, 60:120] = blobs[170:220, 200:290] = True
+    upf = np.array([0.0, -1.0, 0.0])
+    assert tread_levels(floor, blobs, K, upf) == 1

@@ -40,6 +40,7 @@ def main() -> None:
     ap.add_argument("--dir", default="outputs/aprime/strong")
     ap.add_argument("--n-boot", type=int, default=5000)
     ap.add_argument("--subset", help="mask_quality.json (scripts/mask_quality.py): compare only frames selected by --min/--max-score")
+    ap.add_argument("--flag", help="with --subset: keep only frames whose boolean field of mask_quality.json is true (e.g. stair_like)")
     ap.add_argument("--min-score", type=float, default=None)
     ap.add_argument("--max-score", type=float, default=None)
     a = ap.parse_args()
@@ -49,7 +50,11 @@ def main() -> None:
         q = json.loads(Path(a.subset).read_text())
         lo = -np.inf if a.min_score is None else a.min_score
         hi = np.inf if a.max_score is None else a.max_score
-        keep = {i for i, r in q.items() if np.isfinite(r["score"]) and lo <= r["score"] <= hi}
+        if a.flag:
+            keep = {i for i, r in q.items() if r.get(a.flag)}
+            lo = hi = a.flag
+        else:
+            keep = {i for i, r in q.items() if np.isfinite(r["score"]) and lo <= r["score"] <= hi}
         print(f"subset: {len(keep)} frames with {lo} <= score <= {hi}\n")
         ref = {i: f for i, f in ref.items() if i in keep}
     rng = np.random.default_rng(0)
