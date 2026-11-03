@@ -33,7 +33,7 @@ def frame_quality(gt, valid, m, K) -> dict:
     tread, riser, band, ign = (np.asarray(m[k], bool) for k in ("tread", "riser", "band", "ignore"))
     out = {"stair_share": float((tread | riser).mean()), "riser_share": float(riser.mean()),
            "tread_inlier": float("nan"), "riser_inlier": float("nan"), "score": float("nan"),
-           "n_levels": 0, "stair_like": False}
+           "n_levels": 0, "stair_like": False, "stair_like_strict": False}
     t = lambda a: torch.from_numpy(np.ascontiguousarray(a))[None, None]  # noqa: E731
     z, v = box_smooth(t(gt.astype(np.float32)), t(valid), 5)
     n, ok = normals_from_depth(z, K, v)
@@ -51,6 +51,9 @@ def frame_quality(gt, valid, m, K) -> dict:
     out["n_levels"] = tread_levels(gt, tread & valid & ~band, K, up[0].numpy().astype(np.float64))
     # a real staircase: treads at >= 2 heights AND risers present; flat ground with false "tread" blobs has one level
     out["stair_like"] = bool(out["n_levels"] >= 2 and out["riser_share"] >= 0.02)
+    # strict: also horizontal treads and vertical risers (drops rails / girders / walls painted as stairs, e.g. s593)
+    ri = out["riser_inlier"]
+    out["stair_like_strict"] = bool(out["stair_like"] and out["tread_inlier"] >= 0.8 and ri == ri and ri >= 0.4)
     return out
 
 
@@ -83,6 +86,7 @@ def main() -> None:
     sl = np.array([r["stair_like"] for r in res.values()])
     print(f"stair-like frames (>= 2 tread heights and risers present): {sl.sum()} of {len(res)};"
           f" with score >= 0.6 but NOT stair-like (e.g. flat ground with false blobs): {(sl == False)[ok & (sc >= 0.6)].sum() if ok.any() else 0}")  # noqa: E712
+    print(f"strict stair-like (+ tread_inlier >= 0.8, riser_inlier >= 0.4): {sum(r['stair_like_strict'] for r in res.values())} of {len(res)}")
     (REPO_ROOT / a.out).write_text(json.dumps(res, indent=1))
     print("->", a.out)
 
