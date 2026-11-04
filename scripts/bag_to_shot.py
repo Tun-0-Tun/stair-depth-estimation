@@ -30,12 +30,20 @@ def _png(path, a) -> None:
     Image.fromarray(a).save(path)
 
 
+def _ref(sample: Path, shot: int, suffix: str) -> Path:
+    """``s<id>_<suffix>.png`` of shot ``shot``, whatever the zero padding of the id is."""
+    hit = [p for p in sample.glob(f"s*_{suffix}.png") if int(p.name[1:].split("_")[0]) == shot]
+    if not hit:
+        raise SystemExit(f"no s*_{suffix}.png for shot {shot} in {sample}")
+    return hit[0]
+
+
 def validate(a) -> None:
     sample = Path(a.sample or Path(os.environ["STAIR_DATA_ROOT"]) / "ours" / "sample")
     sid = f"s{a.shot}"
-    raw_ref = np.asarray(Image.open(sample / f"{sid}_depth_raw.png"))
-    rgb_ref = np.asarray(Image.open(sample / f"{sid}_rgb.png").convert("RGB")).astype(np.int16)
-    al_ref = np.asarray(Image.open(sample / f"{sid}_depth_aligned_to_rgb.png"))
+    raw_ref = np.asarray(Image.open(_ref(sample, a.shot, "depth_raw")))
+    rgb_ref = np.asarray(Image.open(_ref(sample, a.shot, "rgb")).convert("RGB")).astype(np.int16)
+    al_ref = np.asarray(Image.open(_ref(sample, a.shot, "depth_aligned_to_rgb")))
     prof, fr = load_bag(a.bag)
     print(f"bag: {len(fr['color'])} colour / {len(fr['depth'])} depth frames; "
           f"colour {prof['color']['width']}x{prof['color']['height']}, depth {prof['depth']['width']}x{prof['depth']['height']}")
