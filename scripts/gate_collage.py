@@ -4,7 +4,7 @@
     STAIRNET_CACHE_DIR=~/stairnet_cache python scripts/gate_collage.py [--config configs/aprime/m2_mix_gated.yaml] [--n 24] [--off 8]
 
 Uses the training code itself (``APrimeDataset.masks``: cache -> clean_masks -> confidence -> gate), so the picture is the mask
-the loss gets.  Red = tread, green = riser, yellow = edge band; the caption is  id | tread heights | tread_inlier | riser_inlier.
+the loss gets.  Red = tread, green = riser, yellow = edge band (drawn from the raw cleaned masks, even where training uses only the edge weight); the caption is  id | tread heights | tread_inlier | riser_inlier.
 One sheet per source in ``outputs/gate_collage/``: ``<source>_gated.png`` (stair terms ON) and ``<source>_blocked.png`` (OFF).
 """
 from __future__ import annotations
@@ -74,16 +74,20 @@ def main() -> None:
         print(f"{name}: {len(on)} of {len(ids)} frames pass the gate")
         for tag, pool, k in (("gated", on, a.n), ("blocked", off, a.off)):
             pick = sorted(rng.choice(pool, min(k, len(pool)), replace=False)) if pool else []
-            tiles = []
+            tiles, share = [], []
             for i in pick:
                 s = ds.base[i]
                 # blocked frames: show what StairNet WOULD have said, so ask the cache directly (gate off for this call)
-                gate, ds.gate = ds.gate, None
+                gate, terms, ds.gate, ds.stair_terms = ds.gate, ds.stair_terms, None, "all"  # draw the raw cleaned masks
                 m = ds.masks(s)
-                ds.gate = gate
+                ds.gate, ds.stair_terms = gate, terms
+                share.append([float(m[k].mean()) for k in ("tread", "riser", "band")])
                 st = stats.get(ids[i], {})
                 lab = f"{ids[i]} | lv {st.get('n_levels', '?')} ti {st.get('tread_inlier', float('nan')):.2f} ri {st.get('riser_inlier', float('nan')):.2f}"
                 tiles.append(tile(s, m, lab))
+            if share:
+                t_, r_, b_ = np.mean(share, 0) * 100
+                print(f"  {tag}: mean share of frame  tread {t_:.1f}%  riser {r_:.1f}%  band {b_:.1f}%")
             sheet(tiles, a.cols, out / f"{name}_{tag}.png")
 
 
