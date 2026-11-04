@@ -167,3 +167,66 @@ def parse_ob_disparity(msg: bytes) -> dict[str, Any]:
     bit, = struct.unpack_from("<B", msg, i); i += 1
     unit, mind = struct.unpack_from("<ff", msg, i)
     return {"zpd": zpd, "zpps": zpps, "baseline": baseline, "fx": fx, "bitSize": bit, "unit": unit, "minDisparity": mind}
+
+
+def _decompress(data: bytes, comp: str) -> bytes:
+    if comp == "bz2":
+        return bz2.decompress(data)
+    if comp == "lz4":
+        try:
+            import lz4.frame
+        except ImportError:
+            raise ImportError("this bag has lz4 chunks: run with `uv run --with lz4 ...` (or pip install lz4)") from None
+        return lz4.frame.decompress(data)
+    if comp != "none":
+        raise ValueError(f"unsupported chunk compression {comp!r}")
+    return data
+
+
+def iter_messages(path, topics):
+    """Yield ``(topic, stamp_ns, payload)`` for every message on ``topics``, in file order (whole bag is read)."""
+    conns: dict[int, dict] = {}
+    with open(path, "rb") as f:  # connections that exist only in the index section (see read_bag)
+        f.read(len(MAGIC))
+        while True:
+            raw = f.read(4)
+            if len(raw) < 4:
+                break
+            (hl,) = struct.unpack("<I", raw)
+            h = _fields(f.read(hl))
+            (dl,) = struct.unpack("<I", f.read(4))
+            if h.get("op", b"\x00")[0] == 7:
+                _add_conn(conns, h, f.read(dl))
+            else:
+                f.seek(dl, 1)
+    wanted = set(topics)
+    with open(path, "rb") as f:
+        f.read(len(MAGIC))
+        while True:
+            raw = f.read(4)
+            if len(raw) < 4:
+                break
+            (hl,) = struct.unpack("<I", raw)
+            h = _fields(f.read(hl))
+            (dl,) = struct.unpack("<I", f.read(4))
+            if h.get("op", b"\x00")[0] != 5:
+                f.seek(dl, 1)
+                continue
+            data = _decompress(f.read(dl), h.get("compression", b"none").decode())
+            for rh, rd in _records(data):
+                if rh.get("op", b"\x00")[0] == 7:
+                    _add_conn(conns, rh, rd)
+                elif rh.get("op", b"\x00")[0] == 2:
+                    c = conns.get(struct.unpack("<I", rh["conn"])[0])
+                    if c and c["topic"] in wanted:
+                        sec, nsec = struct.unpack("<II", rh["time"])
+                        yield c["topic"], sec * 10**9 + nsec, rd
+
+
+def parse_image(msg: bytes) -> dict[str, Any]:
+    """sensor_msgs/Image -> height, width, encoding, step, big-endian flag, raw ``data`` bytes."""
+    i = _hdr(msg)
+    h, w = struct.unpack_from("<II", msg, i); i += 8
+    (n,) = struct.unpack_from("<I", msg, i); enc = msg[i + 4 : i + 4 + n].decode(); i += 4 + n
+    big, step, nbytes = struct.unpack_from("<BII", msg, i); i += 9
+    return {"height": h, "width": w, "encoding": enc, "step": step, "big_endian": bool(big), "data": msg[i : i + nbytes]}
