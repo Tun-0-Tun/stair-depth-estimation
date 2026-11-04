@@ -18,7 +18,7 @@ import torch
 import yaml
 from torch.utils.data import DataLoader
 
-from data.aprime_dataset import APrimeDataset
+from data.aprime_dataset import APrimeDataset, build_train
 from metrics.depth_metrics import DepthMetricAccumulator, MetricConfig
 from models.aprime_losses import AprimeLoss, LossConfig
 from utils.misc import REPO_ROOT, resolve_device, set_seed
@@ -129,10 +129,13 @@ def train(cfg: dict, out_dir: Path, smoke: int = 0) -> Path:
     device = resolve_device(cfg.get("device", "auto"))
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "config.json").write_text(json.dumps(cfg, indent=1, default=str))
-    ds = APrimeDataset(cfg, "train", train=True)
+    ds = build_train(cfg)
     val = APrimeDataset(cfg, "val", with_raw=True)
     if smoke:
-        ds.base.records, val.base.records = ds.base.records[:2], val.base.records[:1]
+        first = ds.datasets[0] if hasattr(ds, "datasets") else ds
+        first.base.records, val.base.records = first.base.records[:2], val.base.records[:1]
+        if hasattr(ds, "datasets"):  # ConcatDataset caches the sizes: rebuild after truncating
+            ds = type(ds)(ds.datasets)
     bs = int(t.get("batch_size", 2))
     if cfg["model"].get("fusion") == "stairnetv2_orig" and bs < 2:
         raise ValueError("fusion=stairnetv2_orig uses BatchNorm on pooled features: batch_size >= 2")

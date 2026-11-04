@@ -1,0 +1,10 @@
+base: a6_planar_edge.yaml
+# ours + VOID + Hypersim; stair terms only on stair_like_strict frames. Ours: edge weight + planar. VOID: edge weight only
+# (its camera K differs from the one the planar loss uses). Hypersim: never (no StairNet-verified masks wanted there).
+data:
+  stair_gate_file: mask_quality_train.json
+  extra:
+    - {dataset: void_stairs, target_size: [528, 688], native_size: [480, 640], flags: stair_flags_void_stairs_528.json,
+       stair_cache: void_stairs/stairnet_cache, stair_terms: edge, max_frames: 300}
+    - {dataset: hypersim, target_size: [528, 688], split_file: hypersim/stairs.json, stair_terms: none,
+       normals_K: [595.8, 609.7, 344.0, 264.0], loader_cfg: {force_normals: true}}

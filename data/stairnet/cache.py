@@ -28,7 +28,7 @@ def cache_dir(relative: str = "ours/stairnet_cache") -> Path:
 
 def save_masks(cache_dir, sample_id, cls, conf, lines=None) -> None:
     d = Path(cache_dir)
-    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{sample_id}.npz").parent.mkdir(parents=True, exist_ok=True)  # ids like "stairs0/000123" are nested
     lines = np.zeros((0, 6), np.float32) if lines is None else np.asarray(lines, np.float32)
     np.savez_compressed(
         d / f"{sample_id}.npz",

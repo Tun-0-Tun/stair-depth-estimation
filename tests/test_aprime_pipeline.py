@@ -123,3 +123,58 @@ def test_sensor_chain_preset_runs_through_the_pipeline(tmp_path, monkeypatch):
     ds.set_epoch(1)  # training: a new reproducible corruption every epoch
     assert not np.allclose(a.numpy(), ds[0]["lr"].numpy())
     train(cfg, tmp_path / "out", smoke=3)
+
+
+def _chain_cfg(tmp_path, monkeypatch, extra_overrides=()):
+    from PIL import Image
+
+    from data.stairnet.cache import save_masks
+    from models.aprime_runner import load_cfg
+
+    root = make(tmp_path / "ours" / "sample")
+    for f in root.glob("s*_rgb.png"):
+        rgb = np.asarray(Image.open(f))
+        cls = np.where(rgb[..., 0] > 120, 1, np.where(rgb[..., 2] > 100, 2, 0)).astype(np.uint8)
+        save_masks(tmp_path / "ours" / "stairnet_cache", f.stem[:-4], cls, np.ones(cls.shape, np.float32))
+    (tmp_path / "split.json").write_text(json.dumps({"train": [1, 2, 3, 4], "val": [5], "test": [6]}))
+    monkeypatch.setenv("STAIR_DATA_ROOT", str(tmp_path))
+    return load_cfg("configs/aprime/_base.yaml", [
+        f"data.split_file={tmp_path / 'split.json'}", "data.crop=null", "data.target_size=null", "model.checkpoint=null",
+        "degradation.preset=sequence_bicubic_x8_lateral_projector_axial", "train.workers=0", "device=cpu",
+        "data.intrinsics=[150,150,88,64]", "loss.edge_weight=gaussian", "loss.use_planar_loss=true", *extra_overrides])
+
+
+def test_stair_gate_switches_the_stair_terms_per_frame(tmp_path, monkeypatch):
+    from data.aprime_dataset import APrimeDataset
+
+    cfg = _chain_cfg(tmp_path, monkeypatch)
+    plain = APrimeDataset(cfg, "train", train=True)
+    ids = [r["id"] for r in plain.base.records]
+    on = {i: bool(plain[k]["tread"].any()) for k, i in enumerate(ids)}
+    assert any(on.values()), "the synthetic frames must have tread pixels"
+    keep = next(i for i, v in on.items() if v)
+    gate_file = tmp_path / "gate.json"
+    gate_file.write_text(json.dumps({i: {"stair_like_strict": i == keep} for i in ids}))
+    cfg["data"]["stair_gate_file"] = str(gate_file)
+    gated = APrimeDataset(cfg, "train", train=True)
+    for k, i in enumerate(ids):
+        it = gated[k]
+        if i == keep:
+            assert it["tread"].any() and it["E"].any()
+        else:
+            assert not (it["tread"].any() or it["riser"].any() or it["E"].any() or it["band"].any() or it["ignore"].any())
+
+
+def test_extra_source_is_mixed_in_and_trains(tmp_path, monkeypatch):
+    from data.aprime_dataset import MixedDataset, build_train
+    from models.aprime_runner import train
+
+    cfg = _chain_cfg(tmp_path, monkeypatch)
+    cfg["data"]["extra"] = [{"dataset": "ours", "stair_terms": "none", "normals_K": [150, 150, 88, 64], "max_frames": 4,
+                             "loader_cfg": {"root": "ours/sample", "crop": None, "target_size": None}}]
+    ds = build_train(cfg)
+    assert isinstance(ds, MixedDataset) and len(ds) == len(ds.datasets[0]) + 4 and len(ds.datasets[1]) == 4
+    ds.set_epoch(1)
+    extra_item = ds[len(ds) - 1]
+    assert not (extra_item["tread"].any() or extra_item["E"].any())  # no stair terms on that source
+    train(cfg, tmp_path / "out", smoke=3)

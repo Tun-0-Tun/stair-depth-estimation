@@ -122,6 +122,33 @@ def probe(a) -> None:
             print(f"   fit sample = a*{name} + b: a={c[0]:.5g} b={c[1]:.4g}  R2={1 - res.var() / y.var():.4f}  rms {np.sqrt((res ** 2).mean()):.1f} mm")
 
 
+def look(a) -> None:
+    """Is the bag's depth frame the same picture as s<id>_depth_raw?  Correlation under flips + a side-by-side PNG."""
+    sample = Path(a.sample or Path(os.environ["STAIR_DATA_ROOT"]) / "ours" / "sample")
+    ref = np.asarray(Image.open(_ref(sample, a.shot, "depth_raw"))).astype(np.float64)
+    prof, fr = load_bag(a.bag)
+    k = len(fr["depth"]) // 2
+    img = fr["depth"][k][1]
+    v = decode_depth(img).astype(np.float64)
+    print(f"bag depth frame {k}: {img['width']}x{img['height']} encoding={img['encoding']!r} step={img['step']} "
+          f"bytes={len(img['data'])} big_endian={img['big_endian']}; sample raw {ref.shape[::-1]}")
+    sub = (slice(None, None, 8), slice(None, None, 8))
+    for name, t in (("identity", v), ("flip lr", v[:, ::-1]), ("flip ud", v[::-1]), ("rot180", v[::-1, ::-1])):
+        x, y = t[sub].ravel(), ref[sub].ravel()
+        ok = (x > 0) & (y > 0)
+        print(f"  {name:9} Pearson corr(bag, sample) = {np.corrcoef(x[ok], y[ok])[0, 1]:+.3f}   corr(1/bag, sample) = "
+              f"{np.corrcoef(1.0 / x[ok], y[ok])[0, 1]:+.3f}")
+    def norm(a_):
+        lo, hi = np.percentile(a_[a_ > 0], [1, 99])
+        return (np.clip((a_ - lo) / (hi - lo), 0, 1) * 255).astype(np.uint8)
+    rgb = decode_color(fr["color"][k][1])
+    pan = [np.asarray(Image.fromarray(norm(x)).resize((640, 480))) for x in (v, ref)]
+    pan = [np.stack([p_] * 3, -1) for p_ in pan] + [np.asarray(Image.fromarray(rgb).resize((640, 480)))]
+    out = Path(os.path.expanduser(a.out))
+    Image.fromarray(np.concatenate(pan, 1)).save(out)
+    print("->", out, "(bag raw depth | sample depth_raw | colour)")
+
+
 def convert(a) -> None:
     prof, fr = load_bag(a.bag)
     n = len(fr["depth"])
@@ -151,6 +178,11 @@ def main() -> None:
     pr.add_argument("--bag", required=True)
     pr.add_argument("--shot", type=int, required=True)
     pr.add_argument("--sample", default=None)
+    lk = sub.add_parser("look")
+    lk.add_argument("--bag", required=True)
+    lk.add_argument("--shot", type=int, required=True)
+    lk.add_argument("--sample", default=None)
+    lk.add_argument("--out", default="~/look.png")
     c = sub.add_parser("convert")
     c.add_argument("--bag", required=True)
     c.add_argument("--out", required=True)
@@ -160,7 +192,7 @@ def main() -> None:
     c.add_argument("--dist", action="store_true")
     c.add_argument("--z-mode", default="color", choices=("color", "depth"))
     a = ap.parse_args()
-    {"validate": validate, "probe": probe, "convert": convert}[a.cmd](a)
+    {"validate": validate, "probe": probe, "look": look, "convert": convert}[a.cmd](a)
 
 
 if __name__ == "__main__":

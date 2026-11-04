@@ -1,0 +1,5 @@
+base: a6_planar_edge.yaml
+# ours only, but the stair terms (Gaussian edge weight + planar loss) act ONLY on frames where the StairNet mask passed the
+# geometry check against the GT (mask_quality.py -> stair_like_strict). Every other frame: plain reconstruction loss.
+# Compare with row 6 (same terms on all frames) to see what the gating alone does.
+data: {stair_gate_file: mask_quality_train.json}

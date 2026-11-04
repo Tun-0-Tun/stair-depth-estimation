@@ -79,13 +79,29 @@ def build_ours(cfg: dict, split: str, train: bool = False):
     return build_dataset(ds_cfg, degradation=degradation, **extra)
 
 
+def load_gate(path: str | Path) -> dict[str, bool]:
+    """``{sample_id: bool}`` from a mask_quality.py / stair_flags.py json: where the stair terms may act (strict stair-like)."""
+    return {k: bool(v["stair_like_strict"]) for k, v in load_split(path).items()}
+
+
 class APrimeDataset(Dataset):
-    def __init__(self, cfg: dict, split: str, train: bool = False, with_raw: bool = False) -> None:
+    """``base`` / ``cache`` / ``gate`` / ``stair_terms`` default to the ``ours`` recipe; ``build_extra`` sets them for other sources.
+
+    ``gate`` {sample_id: bool}: the stair terms (edge weight, planar masks) act only on frames flagged True, every other
+    frame is trained with the plain reconstruction loss.  ``stair_terms``: all | edge (no planar masks: another K) | none.
+    """
+
+    def __init__(self, cfg: dict, split: str, train: bool = False, with_raw: bool = False, base=None, cache="auto",
+                 gate: dict[str, bool] | None = None, stair_terms: str = "all") -> None:
         self.cfg, self.train, self.with_raw, self._epoch = cfg, train, with_raw, 0
-        self.base = build_ours(cfg, split, train)
+        self.base = build_ours(cfg, split, train) if base is None else base
         d, l = cfg["data"], cfg["loss"]
         self.scale = int(cfg["model"]["scale"])
-        self.cache = resolve_cache(d)
+        self.cache = resolve_cache(d) if cache == "auto" else cache
+        self.stair_terms = stair_terms
+        if gate is None and base is None and train and d.get("stair_gate_file"):
+            gate = load_gate(d["stair_gate_file"])
+        self.gate = gate
         self.conf_thr = float(d.get("conf_thr", 0.7))
         self.fill = d.get("fill", "nearest")
         self.edge_mode = l.get("edge_weight", "none")
@@ -93,7 +109,7 @@ class APrimeDataset(Dataset):
         self.stair_bg = bool(l.get("stair_bg_boundary", True))
         self.flip = train and not l.get("use_planar_loss", False)  # hflip would move cx
         self.lr_min_frac = float(cfg["degradation"].get("lr_min_frac", 0.5))
-        if self.cache is None and (self.edge_mode != "none" or l.get("use_planar_loss")):
+        if self.cache is None and stair_terms != "none" and (self.edge_mode != "none" or l.get("use_planar_loss")):
             raise ValueError("edge_weight / planar loss need StairNet masks: set data.stair_cache (mask_source != none)")
 
     def set_epoch(self, epoch: int) -> None:
@@ -108,7 +124,8 @@ class APrimeDataset(Dataset):
 
     def masks(self, sample: dict) -> dict[str, np.ndarray]:
         shape = sample["gt_depth"].shape
-        if self.cache is None:
+        off = self.stair_terms == "none" or (self.gate is not None and not self.gate.get(str(sample["meta"]["sample_id"]), False))
+        if self.cache is None or off:
             z = np.zeros(shape, bool)
             return {"E": z.astype(np.float32), "band": z, "ignore": z, "tread": z, "riser": z}
         m = load_masks(self.cache, sample["meta"]["sample_id"], shape)
@@ -120,7 +137,10 @@ class APrimeDataset(Dataset):
         if self.edge_mode == "none":
             e["E"] = np.zeros_like(e["E"])
         ok = m["conf"] >= self.conf_thr
-        return {**e, "tread": (m["cls"] == 1) & ok, "riser": (m["cls"] == 2) & ok}
+        tread, riser = (m["cls"] == 1) & ok, (m["cls"] == 2) & ok
+        if self.stair_terms == "edge":  # planar loss uses the camera K of `ours`; another camera -> edge weight only
+            tread, riser = np.zeros_like(tread), np.zeros_like(riser)
+        return {**e, "tread": tread, "riser": riser}
 
     def __getitem__(self, i: int) -> dict[str, Any]:
         s = self.base[i]
@@ -152,3 +172,61 @@ class APrimeDataset(Dataset):
             out["raw"] = s
             out["masks"] = m
         return out
+
+
+def build_extra(cfg: dict, src: dict, train: bool = True) -> APrimeDataset:
+    """One extra training source (``data.extra`` entry), degraded by the SAME chain preset as ``ours``.
+
+    src: dataset (configs/dataset/<name>), target_size, split_file?, flags? (stair_flags.py json: keep only these ids and
+    gate the stair terms by ``stair_like_strict``), stair_cache, stair_terms (all|edge|none), max_frames?, native_size
+    (for the camera K that the noise model's normals need), normals_K? (when the dataset has no K).
+    """
+    from data.degradation import IdentityDegradation
+    from data.norm import build_normal_map
+    from data.stairnet.cache import cache_dir
+    from utils.config import load_config
+
+    preset = cfg["degradation"].get("preset")
+    if not preset:
+        raise ValueError("data.extra needs degradation.preset (a sensor chain): the legacy astra_hard degrades HR frames of ours only")
+    ds_cfg = {k: v for k, v in dict(load_config("dataset", src["dataset"])).items() if k != "split"}
+    ds_cfg.update(split="train", seed=int(cfg.get("seed", 0)), lr_scale=int(cfg["model"]["scale"]))
+    for k in ("target_size", "split_file"):
+        if src.get(k):
+            ds_cfg[k] = src[k]
+    ds_cfg.update(src.get("loader_cfg") or {})  # any other loader argument (e.g. roots, crop)
+    degradation = build_degradation(dict(load_config("degradation", preset)))
+    extra = {}
+    if getattr(degradation, "uses_normals", False):
+        nm = dict(load_config("normals", cfg.get("normals", "gt_cross")))
+        K = build_dataset(ds_cfg, degradation=IdentityDegradation())[0]["meta"].get("intrinsics")
+        if K and src.get("target_size"):  # the dataset's K belongs to the native frame, the working frame is resized
+            (h0, w0), (h1, w1) = src["native_size"], src["target_size"]
+            K = [K[0] * w1 / w0, K[1] * h1 / h0, K[2] * w1 / w0, K[3] * h1 / h0]
+        K = K or src.get("normals_K")  # e.g. Hypersim: no K in the loader, give one for the working frame
+        if K:
+            nm.update(zip(("fx", "fy", "cx", "cy"), map(float, K), strict=True))
+        extra["normals"] = build_normal_map(nm)
+    base = build_dataset(ds_cfg, degradation=degradation, **extra)
+    gate = None
+    if src.get("flags"):
+        gate = load_gate(src["flags"])
+        base.records = [r for r in base.records if base.record_id(r) in gate]
+    if src.get("max_frames") and len(base.records) > int(src["max_frames"]):
+        base.records = base.records[:: -(-len(base.records) // int(src["max_frames"]))]
+    terms = src.get("stair_terms", "none")
+    cache = None if terms == "none" else str(cache_dir(src.get("stair_cache", f"{src['dataset']}/stairnet_cache")))
+    return APrimeDataset(cfg, "train", train, base=base, cache=cache, gate=gate, stair_terms=terms)
+
+
+class MixedDataset(torch.utils.data.ConcatDataset):
+    def set_epoch(self, epoch: int) -> None:
+        for d in self.datasets:
+            d.set_epoch(epoch)
+
+
+def build_train(cfg: dict):
+    """``ours`` train, plus the ``data.extra`` sources when the config lists any."""
+    ours = APrimeDataset(cfg, "train", train=True)
+    extras = cfg["data"].get("extra") or []
+    return MixedDataset([ours, *(build_extra(cfg, s) for s in extras)]) if extras else ours
