@@ -190,7 +190,8 @@ def build_extra(cfg: dict, src: dict, train: bool = True) -> APrimeDataset:
     if not preset:
         raise ValueError("data.extra needs degradation.preset (a sensor chain): the legacy astra_hard degrades HR frames of ours only")
     ds_cfg = {k: v for k, v in dict(load_config("dataset", src["dataset"])).items() if k != "split"}
-    ds_cfg.update(split="train", seed=int(cfg.get("seed", 0)), lr_scale=int(cfg["model"]["scale"]))
+    # force_degradation: a dataset that ships its own sensor input (VOID: ~1500 VIO points) must not use it, only the GT
+    ds_cfg.update(split="train", seed=int(cfg.get("seed", 0)), lr_scale=int(cfg["model"]["scale"]), force_degradation=True)
     for k in ("target_size", "split_file"):
         if src.get(k):
             ds_cfg[k] = src[k]

@@ -174,6 +174,7 @@ def test_extra_source_is_mixed_in_and_trains(tmp_path, monkeypatch):
                              "loader_cfg": {"root": "ours/sample", "crop": None, "target_size": None}}]
     ds = build_train(cfg)
     assert isinstance(ds, MixedDataset) and len(ds) == len(ds.datasets[0]) + 4 and len(ds.datasets[1]) == 4
+    assert ds.datasets[1].base.force_degradation  # the chain, never the sensor input an extra dataset may ship
     ds.set_epoch(1)
     extra_item = ds[len(ds) - 1]
     assert not (extra_item["tread"].any() or extra_item["E"].any())  # no stair terms on that source
