@@ -23,7 +23,14 @@ import _bootstrap  # noqa: F401
 import numpy as np
 from PIL import Image
 
+from utils import rosbag_min as rb
 from utils.astra_bag import align_depth, decode_color, decode_depth, load_bag, nearest
+
+
+def decode_disparity_param(bag) -> dict | None:
+    info = rb.read_bag(bag)
+    m = info["first"].get("/cam/disparityParam")
+    return rb.parse_ob_disparity(m) if m else None
 
 
 def _png(path, a) -> None:
@@ -94,6 +101,20 @@ def probe(a) -> None:
         r = y / x
         print(f"   ratio sample/bag: median {np.median(r):.4f}, IQR {np.percentile(r, 25):.4f}..{np.percentile(r, 75):.4f}")
         print(f"   product sample*bag: median {np.median(x * y):.0f}, rel. IQR {(np.percentile(x * y, 75) - np.percentile(x * y, 25)) / np.median(x * y):.3f}")
+        ok = (x > 1) & (x < 16383)  # 1 and 2^14-1 look like markers, not measurements
+        for lo, hi in ((0.5, 99.5),):
+            print(f"   bag raw percentiles 1/5/25/50/75/95/99: {np.percentile(x, [1, 5, 25, 50, 75, 95, 99]).round(0)}; "
+                  f"share ==16383: {(x == 16383).mean():.3f}, ==1: {(x == 1).mean():.3f}")
+        xi, yi = x[ok], y[ok]
+        A = np.stack([xi, np.ones_like(xi)], 1)
+        c, *_ = np.linalg.lstsq(A, 1.0 / yi, rcond=None)  # structured light: 1/Z linear in disparity
+        z = 1.0 / (A @ c)
+        err = z - yi
+        print(f"   fit 1/sample = a*bag + b: a={c[0]:.6g} b={c[1]:.6g}  -> depth rms {np.sqrt((err ** 2).mean()):.1f} mm, "
+              f"median |err| {np.median(np.abs(err)):.1f} mm, within 5 mm {(np.abs(err) <= 5).mean():.3f} (on {ok.sum()} px)")
+        dp = decode_disparity_param(a.bag)
+        if dp:
+            print(f"   camera disparity param: {dp};  1/(fx*baseline) = {1 / (dp['fx'] * dp['baseline']):.6g}, 1/zpd = {1 / dp['zpd']:.6g}")
         for name, xx in (("bag", x), ("1/bag", 1.0 / x)):
             A = np.stack([xx, np.ones_like(xx)], 1)
             c, *_ = np.linalg.lstsq(A, y, rcond=None)
