@@ -71,6 +71,36 @@ def validate(a) -> None:
               f"                   | {np.median(d) if d.size else float('nan'):.1f}")
 
 
+def probe(a) -> None:
+    """How do the bag's raw depth values relate to the sample's s<id>_depth_raw?  (scale? offset? inverse = disparity?)"""
+    sample = Path(a.sample or Path(os.environ["STAIR_DATA_ROOT"]) / "ours" / "sample")
+    ref = np.asarray(Image.open(_ref(sample, a.shot, "depth_raw"))).astype(np.float64)
+    rgb_ref = np.asarray(Image.open(_ref(sample, a.shot, "rgb")).convert("RGB")).astype(np.int16)
+    prof, fr = load_bag(a.bag)
+    iou = []
+    for _, img in fr["depth"]:
+        d = decode_depth(img)
+        iou.append(float(((d > 0) & (ref > 0)).sum() / max(((d > 0) | (ref > 0)).sum(), 1)))
+    di = int(np.argmax(iou))
+    ci = int(np.argmin([np.abs(decode_color(img).astype(np.int16) - rgb_ref).mean() for _, img in fr["color"]]))
+    print(f"valid-mask IoU per depth frame (max {max(iou):.3f} at {di}): " + " ".join(f"{x:.2f}" for x in iou))
+    print(f"colour frame {ci}; depth frame nearest in time to it: {nearest(fr['depth'], fr['color'][ci][0])}")
+    for k in sorted({di, nearest(fr["depth"], fr["color"][ci][0])}):
+        v = decode_depth(fr["depth"][k][1]).astype(np.float64)
+        both = (v > 0) & (ref > 0)
+        x, y = v[both], ref[both]
+        print(f"-- depth frame {k}: both valid {both.sum()} px | bag raw min/med/max {x.min():.0f}/{np.median(x):.0f}/{x.max():.0f} "
+              f"| sample raw {y.min():.0f}/{np.median(y):.0f}/{y.max():.0f}")
+        r = y / x
+        print(f"   ratio sample/bag: median {np.median(r):.4f}, IQR {np.percentile(r, 25):.4f}..{np.percentile(r, 75):.4f}")
+        print(f"   product sample*bag: median {np.median(x * y):.0f}, rel. IQR {(np.percentile(x * y, 75) - np.percentile(x * y, 25)) / np.median(x * y):.3f}")
+        for name, xx in (("bag", x), ("1/bag", 1.0 / x)):
+            A = np.stack([xx, np.ones_like(xx)], 1)
+            c, *_ = np.linalg.lstsq(A, y, rcond=None)
+            res = y - A @ c
+            print(f"   fit sample = a*{name} + b: a={c[0]:.5g} b={c[1]:.4g}  R2={1 - res.var() / y.var():.4f}  rms {np.sqrt((res ** 2).mean()):.1f} mm")
+
+
 def convert(a) -> None:
     prof, fr = load_bag(a.bag)
     n = len(fr["depth"])
@@ -96,6 +126,10 @@ def main() -> None:
     v.add_argument("--bag", required=True)
     v.add_argument("--shot", type=int, required=True)
     v.add_argument("--sample", default=None, help="folder with the sample PNGs (default $STAIR_DATA_ROOT/ours/sample)")
+    pr = sub.add_parser("probe")
+    pr.add_argument("--bag", required=True)
+    pr.add_argument("--shot", type=int, required=True)
+    pr.add_argument("--sample", default=None)
     c = sub.add_parser("convert")
     c.add_argument("--bag", required=True)
     c.add_argument("--out", required=True)
@@ -105,7 +139,7 @@ def main() -> None:
     c.add_argument("--dist", action="store_true")
     c.add_argument("--z-mode", default="color", choices=("color", "depth"))
     a = ap.parse_args()
-    validate(a) if a.cmd == "validate" else convert(a)
+    {"validate": validate, "probe": probe, "convert": convert}[a.cmd](a)
 
 
 if __name__ == "__main__":
