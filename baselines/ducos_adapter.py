@@ -47,7 +47,7 @@ from typing import Any
 import numpy as np
 
 from baselines.base import Availability, BaselineModel, add_third_party_to_path, register_baseline
-from utils.misc import resize_depth, resize_rgb
+from utils.misc import resize_depth, resize_pil, resize_rgb
 
 __all__ = ["DuCosAdapter"]
 
@@ -88,9 +88,11 @@ class DuCosAdapter(BaselineModel):
         scale: int = 4,
         model_name: str = "DuCos",
         depth_anything_ckpt: str | None = "checkpoints/depth_anything_v2_vits.pth",
+        upsample: str = "torch",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
+        self.upsample = upsample
         self.scale = int(scale)
         self.model_name = model_name
         self.depth_anything_ckpt = depth_anything_ckpt
@@ -176,7 +178,12 @@ class DuCosAdapter(BaselineModel):
         h, w = rgb.shape[:2]
 
         # 2. LR depth -> dense HR grid, exactly as the upstream test scripts do
-        dep = depth_in if depth_in.shape == (h, w) else resize_depth(depth_in, (h, w), "bicubic")
+        if depth_in.shape == (h, w):
+            dep = depth_in
+        elif self.upsample == "pil":  # upstream: Image.resize(..., BICUBIC)
+            dep = resize_pil(depth_in, (h, w))
+        else:
+            dep = resize_depth(depth_in, (h, w), "bicubic")
 
         # 1. per-sample min-max normalisation (theirs, reproduced verbatim)
         d_min, d_max = float(np.min(dep)), float(np.max(dep))
@@ -189,19 +196,25 @@ class DuCosAdapter(BaselineModel):
         rgb_n = rgb if r_max - r_min < 1e-6 else (rgb - r_min) / (r_max - r_min)
         rgb_n = resize_rgb(rgb_n.astype(np.float32), (h, w))
 
-        sample = {
-            "rgb": torch.from_numpy(rgb_n.transpose(2, 0, 1))[None].to(self.device).float(),
-            "dep": torch.from_numpy(dep_n.astype(np.float32))[None, None].to(self.device).float(),
-        }
+        rgb_t = torch.from_numpy(rgb_n.transpose(2, 0, 1))[None].to(self.device).float()
+        dep_t = torch.from_numpy(dep_n.astype(np.float32))[None, None].to(self.device).float()
         with torch.no_grad():
-            out = self.model(sample)
+            out = self._forward(rgb_t, dep_t)
 
-        pred_n = out["pred"].squeeze().detach().float().cpu().numpy()
+        pred_n = out.squeeze().detach().float().cpu().numpy()
         pred = pred_n * (d_max - d_min) + d_min  # back to metres
         pred = np.clip(pred, self.min_depth, self.max_depth)
         if pred.shape != (h, w):
             pred = resize_depth(pred, (h, w), mode="bilinear")
         return pred.astype(np.float32)
+
+    def _forward(self, rgb_t, dep_t):
+        """Normalised ``(1,3,H,W)`` RGB + ``(1,1,H,W)`` depth -> normalised prediction.
+
+        The one line that differs for DORNet (same authors, same protocol), which
+        subclasses this adapter.
+        """
+        return self.model({"rgb": rgb_t, "dep": dep_t})["pred"]
 
     def describe(self) -> dict[str, Any]:
         return {**super().describe(), "scale": self.scale, "n_degenerate": self.n_degenerate}

@@ -60,11 +60,24 @@ class ARKitScenesDataset(BaseDepthDataset):
 
     def _build_index(self) -> Sequence[Any]:
         split_dir = self.root / "data" / "upsampling" / _SPLIT_DIRS[self.split]
+        from PIL import Image
+
+        def landscape(p: Path) -> bool:
+            with Image.open(p) as im:  # header only, no decode
+                return im.size[0] >= im.size[1]
+
         records: list[dict[str, Any]] = []
+        rotated = 0
         for video in sorted(p for p in split_dir.glob("*") if p.is_dir()):
             for gt in sorted((video / "highres_depth").glob("*.png"))[:: self.frame_stride]:
                 rgb, lr = video / "wide" / gt.name, video / "lowres_depth" / gt.name
                 if rgb.exists() and lr.exists():
+                    # Some frames ship a portrait RGB next to a landscape depth (seen as
+                    # "rgb (1920, 1440) vs gt (1440, 1920)"). Rotating blindly would
+                    # misalign them without any error, so they are left out and counted.
+                    if not (landscape(rgb) == landscape(gt) == landscape(lr)):
+                        rotated += 1
+                        continue
                     records.append(
                         {
                             "id": f"{video.name}/{gt.stem}",
@@ -75,6 +88,8 @@ class ARKitScenesDataset(BaseDepthDataset):
                         }
                     )
 
+        if rotated:
+            print(f"[arkitscenes] left out {rotated} frames whose RGB/depth orientations disagree")
         if not records and self.strict:
             raise FileNotFoundError(
                 f"[arkitscenes] no frames under {split_dir}.\n"

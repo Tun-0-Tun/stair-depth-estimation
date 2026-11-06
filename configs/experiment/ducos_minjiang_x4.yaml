@@ -1,0 +1,26 @@
+# DuCos x4 on MinJiang stairs, bicubic x4 from the sensor depth (holes filled first).
+# GT is the sensor itself -> optimistic. Zero-shot.
+defaults:
+  - dataset: minjiang
+  - model: ducos
+  - degradation: bicubic_x4
+
+seed: 0
+degradation:
+  fill_holes: true     # sensor-as-GT has holes; see sr_downsample.py
+device: auto
+model:
+  checkpoint: checkpoints/ducos/x4.pth.tar
+  scale: 4
+eval:
+  crop: none
+  pooling: image
+  min_depth: 0.3
+  max_depth: 8.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none
+notes: "bicubic x4 from sensor depth, holes filled; optimistic; zero-shot"

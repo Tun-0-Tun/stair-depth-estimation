@@ -11,6 +11,7 @@ nobody is blocked on having an account.  See ``utils/results.py::get_tracker``.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import platform
 import subprocess
@@ -28,6 +29,18 @@ __all__ = ["RESULTS_DIR", "SUMMARY_CSV", "RunRecorder", "collect_env", "write_ma
 RESULTS_DIR = REPO_ROOT / "experiments" / "results"
 SUMMARY_CSV = RESULTS_DIR / "benchmark.csv"
 
+#: Metrics split by where the REAL sensor had no measurement (eval.regions: sensor_holes).
+#: Empty for runs that do not ask for it.
+REGION_COLUMNS: tuple[str, ...] = (
+    "holes_frac",
+    "holes_absrel",
+    "holes_rmse",
+    "holes_delta1",
+    "valid_absrel",
+    "valid_rmse",
+    "valid_delta1",
+)
+
 SUMMARY_COLUMNS: tuple[str, ...] = (
     "timestamp",
     "experiment",
@@ -44,6 +57,7 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
     *METRIC_NAMES,
     "fps",
     "latency_ms_median",
+    *REGION_COLUMNS,
     "git_commit",
     "metric_config",
     "config_hash",
@@ -52,9 +66,11 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
 
 #: Earlier headers of benchmark.csv, newest first, so migrate_summary_header can
 #: place a row of any past width. Add one here whenever SUMMARY_COLUMNS grows.
+_BASE = tuple(c for c in SUMMARY_COLUMNS if c not in REGION_COLUMNS)
 _PAST_COLUMNS: tuple[tuple[str, ...], ...] = (
-    tuple(c for c in SUMMARY_COLUMNS if c != "config_hash"),
-    tuple(c for c in SUMMARY_COLUMNS if c not in ("config_hash", "n_unreadable")),
+    _BASE,
+    tuple(c for c in _BASE if c != "config_hash"),
+    tuple(c for c in _BASE if c not in ("config_hash", "n_unreadable")),
 )
 
 
@@ -173,12 +189,63 @@ def migrate_summary_header(path: Path | None = None) -> bool:
     return True
 
 
+def config_hash(cfg: Mapping[str, Any]) -> str:
+    """What decides the numbers: data, input, method, weights, protocol, seed.
+
+    Not the device, runtime or notes, and not the experiment's name -- so the
+    same floor reached from two experiment files is computed once. Not the code
+    either: after a fix that changes results, rerun with --force.
+    """
+
+    def clean(x: Any) -> Any:
+        if isinstance(x, Mapping):
+            return {
+                k: clean(v) for k, v in x.items() if v is not None and k not in ("docs", "notes")
+            }
+        return x
+
+    blob = {k: clean(cfg.get(k)) for k in ("dataset", "degradation", "model", "eval", "seed")}
+    # normals only matter for degradations that use them; absent keys keep old hashes
+    blob.update({k: clean(cfg[k]) for k in ("normals", "force_normals") if cfg.get(k)})
+    return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def backfill_config_hashes(path: Path | None = None) -> int:
+    """Give rows written before ``config_hash`` existed their hash, from the
+    ``config.json`` their run left in ``experiments/runs/<timestamp>_<experiment>/``.
+
+    Without it every older result counts as "not computed" and the cache reruns
+    it. A row whose run dir is gone stays without a hash and will rerun once.
+    Returns the number of rows filled in.
+    """
+    path = Path(path or SUMMARY_CSV)
+    if not path.exists():
+        return 0
+    migrate_summary_header(path)
+    with path.open(newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    runs = REPO_ROOT / "experiments" / "runs"
+    n = 0
+    for r in rows:
+        cfg_file = runs / f"{r['timestamp']}_{r['experiment']}" / "config.json"
+        if r.get("config_hash") or not cfg_file.exists():
+            continue
+        r["config_hash"] = config_hash(json.loads(cfg_file.read_text(encoding="utf-8"))["config"])
+        n += 1
+    if n:
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(SUMMARY_COLUMNS), extrasaction="ignore")
+            w.writeheader()
+            w.writerows(rows)
+    return n
+
+
 def find_summary_row(config_hash: str, path: Path | None = None) -> dict[str, str] | None:
     """The latest benchmark.csv row recorded for this exact config, if any."""
     path = Path(path or SUMMARY_CSV)
     if not config_hash or not path.exists():
         return None
-    migrate_summary_header(path)
+    backfill_config_hashes(path)
     with path.open(newline="", encoding="utf-8") as fh:
         hits = [r for r in csv.DictReader(fh) if r.get("config_hash") == config_hash]
     return hits[-1] if hits else None

@@ -63,7 +63,7 @@ class RGBDStairDataset(BaseDepthDataset):
         min_depth=0.2,
         max_depth=10.0,
         native_size=(480, 640),
-        sensor="RGB-D camera with IMU (StairNetV2 capture); depth quantised to 256 levels per frame",
+        sensor="RGB-D camera (StairNetV2 capture), per-frame gravity vector; depth quantised to 256 levels per frame",
         url="https://data.mendeley.com/datasets/p28ncjnvgk",
         notes="Test split only. Depth decoded from uint8 with the per-frame range; GT is the sensor.",
     )

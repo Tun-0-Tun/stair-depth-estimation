@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 
 from baselines.base import BaselineModel, register_baseline
-from utils.misc import resize_depth, sparse_to_dense_nn
+from utils.misc import resize_depth, resize_pil, sparse_to_dense_nn
 
 __all__ = ["BicubicBaseline", "NearestFillBaseline"]
 
@@ -40,7 +40,10 @@ class BicubicBaseline(BaselineModel):
 
     def _predict(self, rgb: np.ndarray, depth_in: np.ndarray, **kwargs: Any) -> np.ndarray:
         h, w = rgb.shape[:2]
-        out = resize_depth(depth_in, (h, w), mode="bicubic")
+        if self.options.get("upsample") == "pil":  # the DSR papers' own bicubic
+            out = resize_pil(depth_in, (h, w))
+        else:
+            out = resize_depth(depth_in, (h, w), mode="bicubic")
         return np.clip(out, self.min_depth, self.max_depth).astype(np.float32)
 
 

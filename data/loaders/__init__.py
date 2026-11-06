@@ -1,6 +1,6 @@
 """Dataset loaders.  Importing this package registers every dataset key.
 
-Stair-domain: ``void_stairs``, ``minjiang``, ``rgbd_stair``, ``stairnet_rel`` (not metric).
+Stair-domain: ``ours`` (our Astra 2 captures), ``void_stairs``, ``minjiang``, ``rgbd_stair``, ``stairnet_rel`` (not metric).
 General benchmarks: ``nyuv2``, ``zju_l5``, ``hammer``, ``arkitscenes``.
 Depth-SR test sets: ``middlebury``, ``lu`` (both via ``depth_enhance``).
 Synthetic training source: ``hypersim``.
@@ -25,6 +25,7 @@ from data.loaders.hammer import HammerDataset  # noqa: F401
 from data.loaders.hypersim import HyperSimDataset  # noqa: F401
 from data.loaders.minjiang import MinJiangDataset  # noqa: F401
 from data.loaders.nyuv2 import NYUv2Dataset  # noqa: F401
+from data.loaders.ours import OursDataset  # noqa: F401
 from data.loaders.stairnet import RGBDStairDataset, StairNetRelDataset  # noqa: F401
 from data.loaders.synthetic import SyntheticStairsDataset  # noqa: F401
 from data.loaders.void_stairs import VOIDStairsDataset  # noqa: F401

@@ -63,6 +63,9 @@ class BaseDegradation(abc.ABC):
 
     key: str = "base"
 
+    #: True -> ``apply`` takes a third ``context`` argument (``rgb``, ``sample_id``) that the
+    #: loader supplies. Only degradations that need the image (glare holes) set it.
+    needs_context: bool = False
     uses_normals: ClassVar[bool] = False
     """Subclasses that need a normal map set this; ``apply`` then gets ``normal=``."""
 
@@ -74,6 +77,7 @@ class BaseDegradation(abc.ABC):
         *,
         normal_estimator: Any = None,
         force_normals: bool = False,
+        context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Degrade ``gt_depth``.
 
@@ -82,8 +86,9 @@ class BaseDegradation(abc.ABC):
         ``gt_depth`` with ``normal_estimator`` (a ``data.norm`` method); with
         ``force_normals`` the estimator is used even if ``normal`` is given.  The map
         used is returned as ``out["normals"]``.  Other degradations ignore all three.
+        ``context`` (rgb, sample_id) is passed to ``apply`` only when ``needs_context``.
         """
-        # Set ground trueth depth
+        # Set ground truth depth
         gt = np.asarray(gt_depth, dtype=np.float32)
         if gt.ndim != 2:
             raise ValueError(f"gt_depth must be (H, W), got {gt.shape}")
@@ -99,6 +104,8 @@ class BaseDegradation(abc.ABC):
             )
             out = dict(self.apply(gt, normal, rng))
             out["normals"] = normal
+        elif self.needs_context:
+            out = dict(self.apply(gt, rng, context))
         else:
             out = dict(self.apply(gt, rng))
 

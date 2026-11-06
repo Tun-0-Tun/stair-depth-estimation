@@ -5,7 +5,11 @@ name: arkitscenes
 loader: arkitscenes
 root: ARKitScenes
 split: test              # = Validation; the release has no separate test split
-frame_stride: 1
+# Validation holds ~5600 frames of ~300 videos at 1920x1440, and consecutive
+# frames of one video are near-duplicates. Every 10th is ~2 per video (~560
+# frames): the running metrics were already flat after ~350 frames, and the full
+# set costs hours per method for no extra information. frame_stride: 1 = all.
+frame_stride: 10
 min_depth: 0.05
 max_depth: 10.0
 eval:

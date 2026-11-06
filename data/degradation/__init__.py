@@ -1,6 +1,7 @@
 """Sensor degradation models (GT depth -> realistic sensor input)."""
 
 from data.degradation.active_stereo_astra2 import ActiveStereoAstra2Degradation
+from data.degradation.astra_hard import AstraHardDegradation, masked_downsample
 from data.degradation.axial import AxialDegradation
 from data.degradation.base import (
     DEGRADATION_REGISTRY,
@@ -20,6 +21,7 @@ from data.degradation.theta_dropout import ThetaDropoutDegradation
 __all__ = [
     "DEGRADATION_REGISTRY",
     "ActiveStereoAstra2Degradation",
+    "AstraHardDegradation",
     "AxialDegradation",
     "BaseDegradation",
     "BicubicSRDegradation",
@@ -32,5 +34,6 @@ __all__ = [
     "SequentialDegradation",
     "ThetaDropoutDegradation",
     "build_degradation",
+    "masked_downsample",
     "register_degradation",
 ]

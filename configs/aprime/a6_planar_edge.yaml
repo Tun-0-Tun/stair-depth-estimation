@@ -1,0 +1,4 @@
+base: _base.yaml
+# row 6: planar loss + Gaussian edge weight, no fusion. The "updated row 5" that was waiting for the intrinsics K:
+# on the sensor chain only the planar loss (row 4) and, weakly, the Gaussian edge weight (row 3b) helped.
+loss: {use_planar_loss: true, edge_weight: gaussian}

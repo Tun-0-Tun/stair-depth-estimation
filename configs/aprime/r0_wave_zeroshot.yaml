@@ -1,0 +1,5 @@
+base: _base.yaml
+method: baseline
+baseline:
+  model: wave
+  overrides: {scale: 8, checkpoint: checkpoints/wave/NYU8x.pth}

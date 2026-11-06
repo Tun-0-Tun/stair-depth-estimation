@@ -305,6 +305,41 @@ Write the result here **whether or not it matches**. If a number is outside
 unknown. "We could not reproduce it and do not know why" is a legitimate and
 useful finding; quietly dropping the row is not.
 
+### DuCos x4 — reproduced (2026-10-05)
+
+Reference: DuCos paper (arXiv:2503.04171) **Table 1**, ×4 RMSE. Upstream
+reports Middlebury/Lu on the 0–255 scale (`midd_calc_rmse`) and NYU in cm, so
+ours is `rmse × 255` and `rmse × 100`. Checkpoint `x4.pth.tar`, PIL bicubic LR,
+`border6` crop; NYU = the last 449 frames of the labeled `.mat`.
+
+| Dataset | Paper | Ours | Bicubic (ours) |
+|---|---|---|---|
+| Middlebury (30) | 1.45 | 1.45 | 2.30 |
+| Lu (6) | 1.38 | 1.38 | 2.47 |
+| NYU v2 (449), cm | 2.60 | 2.60 | 4.27 |
+
+Before the LR map was built with PIL's anti-aliased resize (upstream's own
+`Image.resize(..., BICUBIC)`), `F.interpolate` produced an aliased input and
+DuCos scored 4.00 / 4.59 / 7.2 cm — worse than bicubic. A protocol mismatch can
+make a SOTA model lose to its floor without any error; reproduce the paper
+first.
+
+### WAVE on NYU v2 — reproduced (2026-10-05)
+
+Reference: WAVE paper (arXiv:2608.25302), NYU-trained rows, RMSE in cm; same
+449 frames and PIL bicubic LR as the DuCos anchor.
+
+| Scale | Paper | Ours |
+|---|---|---|
+| ×8 | 2.50 | 2.50 |
+| ×16 | 4.60 | 4.61 |
+| ×32 | 7.90 | 7.97 |
+
+⚠ `configs/model/wave.yaml` labels the ×8 file as the HyperSim-trained model,
+whose paper row is 4.61 on NYU. We get the NYU-trained row's 2.50, so the ×8
+checkpoint is most likely the NYU-trained one -- check the upstream file name
+before calling any ×8 row "zero-shot from HyperSim".
+
 ## Comparing methods on a GT-only dataset
 
 Three things make MinJiang (and NYUv2, and Hypersim) easy to read wrongly. All

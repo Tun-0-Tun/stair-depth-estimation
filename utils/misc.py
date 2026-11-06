@@ -20,6 +20,7 @@ __all__ = [
     "data_root",
     "downsample_depth",
     "resize_depth",
+    "resize_pil",
     "resize_rgb",
     "resize_sparse",
     "resolve_device",
@@ -120,6 +121,20 @@ def resize_depth(depth: np.ndarray, size: tuple[int, int], mode: str = "nearest"
     if depth.shape[:2] == tuple(size):
         return depth
     return _torch_interp(depth.astype(np.float32), tuple(size), mode)
+
+
+def resize_pil(depth: np.ndarray, size: tuple[int, int]) -> np.ndarray:
+    """Bicubic resize through PIL on float32, the way the DSR papers' loaders do it.
+
+    DuCos (``data/*_dataloader.py``), DKN and FDSR build the LR input with
+    ``Image.resize(..., Image.BICUBIC)``. PIL widens the kernel when shrinking
+    (anti-aliasing) and uses a=-0.5; ``F.interpolate`` does neither, so its x4
+    LR map is aliased and is not the input those models were trained on.
+    """
+    from PIL import Image
+
+    img = Image.fromarray(np.ascontiguousarray(depth, dtype=np.float32), mode="F")
+    return np.asarray(img.resize((size[1], size[0]), Image.BICUBIC), dtype=np.float32)
 
 
 def resize_sparse(depth: np.ndarray, size: tuple[int, int]) -> np.ndarray:

@@ -25,8 +25,6 @@ git) and writes the full config, environment and per-sample metrics to
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import sys
 from collections.abc import Sequence
 from typing import Any
@@ -48,34 +46,12 @@ from utils.config import (
     load_experiment,
 )
 from utils.misc import set_seed
-from utils.results import RunRecorder, find_summary_row, get_tracker
+from utils.results import RunRecorder, config_hash, find_summary_row, get_tracker
 
 #: The benchmark.csv row of the last main() call -- run, or found in the cache.
 #: run_benchmark reads it instead of "the last line of the CSV", which another
 #: run on another GPU may have appended in the meantime.
 LAST_ROW: dict[str, Any] | None = None
-
-
-def config_hash(cfg: Config) -> str:
-    """What decides the numbers: data, input, method, weights, protocol, seed.
-
-    Not the device, runtime or notes, and not the experiment's name -- so the
-    same floor reached from two experiment files is computed once. Not the code
-    either: after a fix that changes results, rerun with --force.
-    """
-
-    def clean(x: Any) -> Any:
-        if isinstance(x, dict):
-            return {
-                k: clean(v) for k, v in x.items() if v is not None and k not in ("docs", "notes")
-            }
-        return x
-
-    d = cfg.to_dict()
-    blob = {k: clean(d.get(k)) for k in ("dataset", "degradation", "model", "eval", "seed")}
-    # normals only matter for degradations that use them; absent keys keep old hashes
-    blob.update({k: clean(d[k]) for k in ("normals", "force_normals") if d.get(k)})
-    return hashlib.sha1(json.dumps(blob, sort_keys=True, default=str).encode()).hexdigest()[:12]
 
 
 def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
@@ -164,7 +140,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     global LAST_ROW
     LAST_ROW = None
-    chash = config_hash(cfg)
+    chash = config_hash(cfg.to_dict())
     cached = None if (args.force or args.check) else find_summary_row(chash)
     if cached:
         print(
@@ -235,6 +211,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # ---- evaluate ---------------------------------------------------------
     acc = DepthMetricAccumulator(metric_cfg, pooling=str(eval_cfg.get("pooling", "image")))
+    # eval.regions: sensor_holes -> the same metrics again, only on pixels where the real
+    # sensor had no measurement ("holes") and only where it had ("valid"). Pooled per pixel:
+    # per-image averages of a few hundred hole pixels would be noise.
+    by_region = eval_cfg.get("regions") == "sensor_holes"
+    acc_holes = DepthMetricAccumulator(metric_cfg, pooling="pixel")
+    acc_valid = DepthMetricAccumulator(metric_cfg, pooling="pixel")
     unreadable: list[str] = []
     for i in range(len(dataset)):
         try:
@@ -252,6 +234,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             continue
         pred = model.predict_sample(sample)
         acc.update(pred, sample["gt_depth"], sample["mask"], sample["meta"]["sample_id"])
+        if by_region:
+            if "sensor_mask" not in sample:
+                raise SystemExit(
+                    "eval.regions=sensor_holes needs a dataset with a native sensor input "
+                    "(sample has no 'sensor_mask')"
+                )
+            hole = ~sample["sensor_mask"]
+            acc_holes.update(pred, sample["gt_depth"], sample["mask"] & hole)
+            acc_valid.update(pred, sample["gt_depth"], sample["mask"] & ~hole)
         if (i + 1) % 50 == 0 or i + 1 == len(dataset):
             print(f"  [{i + 1}/{len(dataset)}] {format_metrics(acc.compute())}")
 
@@ -265,6 +256,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     summary: dict[str, Any] = acc.compute()
     summary["n_unreadable"] = len(unreadable)
+    if by_region:
+        n_h = sum(r["n_valid"] for r in acc_holes.per_sample)
+        n_v = sum(r["n_valid"] for r in acc_valid.per_sample)
+        summary["holes_frac"] = n_h / max(n_h + n_v, 1)
+        for tag, a in (("holes", acc_holes), ("valid", acc_valid)):
+            m = a.compute()
+            for k in ("absrel", "rmse", "delta1"):
+                summary[f"{tag}_{k}"] = m[k]
+        print(
+            f"[regions] holes {summary['holes_frac']:.1%} of scored pixels: "
+            f"rmse {summary['holes_rmse']:.4f} (valid {summary['valid_rmse']:.4f}), "
+            f"absrel {summary['holes_absrel']:.4f} (valid {summary['valid_absrel']:.4f})"
+        )
 
     # ---- runtime ----------------------------------------------------------
     if cfg.get("runtime", {}).get("measure", True) and len(dataset):

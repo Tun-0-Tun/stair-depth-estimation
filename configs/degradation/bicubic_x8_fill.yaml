@@ -1,0 +1,10 @@
+# bicubic x8 for sensor-as-GT sets with holes (ours, MinJiang): nearest-fill the GT holes BEFORE downsampling.
+# Without it the anti-aliased resize averages depth with the zeros of the holes, so LR pixels next to a hole get
+# a too-small depth that still looks like a valid measurement (see sr_downsample.py). The real holes stay excluded
+# from the metrics by the GT mask.
+type: bicubic_sr
+scale: 8
+mode: bicubic
+noisy: false
+backend: pil
+fill_holes: true

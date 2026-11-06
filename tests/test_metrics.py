@@ -238,26 +238,30 @@ def test_group_override_does_not_discard_key_overrides():
 
 
 def test_benchmark_csv_with_an_old_header_is_migrated_not_shifted(tmp_path):
-    """Columns added to SUMMARY_COLUMNS (n_unreadable, then config_hash) left the old
-    header in place, and every new row was read off by a column: absrel showed
+    """Columns added to SUMMARY_COLUMNS (n_unreadable, config_hash, the region metrics) left
+    the old header in place, and every new row was read off by a column: absrel showed
     n_unreadable, fps showed silog. Rows of every past width must land right."""
     import csv
 
     from utils.results import _PAST_COLUMNS, SUMMARY_COLUMNS, append_summary_row
 
-    oldest, middle = _PAST_COLUMNS[-1], _PAST_COLUMNS[0]
+    base, no_hash, oldest = _PAST_COLUMNS
     path = tmp_path / "benchmark.csv"
     with path.open("w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(oldest)
         w.writerow(["0.5" if c == "absrel" else "x" for c in oldest])
         w.writerow(
-            ["0.7" if c == "absrel" else "2" if c == "n_unreadable" else "x" for c in middle]
+            ["0.6" if c == "absrel" else "2" if c == "n_unreadable" else "x" for c in no_hash]
         )
+        w.writerow(["0.7" if c == "absrel" else "h1" if c == "config_hash" else "x" for c in base])
 
-    append_summary_row({"absrel": 0.9, "n_unreadable": 0, "config_hash": "abc"}, path=path)
+    append_summary_row(
+        {"absrel": 0.9, "n_unreadable": 0, "config_hash": "abc", "holes_rmse": 0.2}, path=path
+    )
     rows = list(csv.DictReader(path.open(newline="")))
     assert list(rows[0]) == list(SUMMARY_COLUMNS)
-    assert [r["absrel"] for r in rows] == ["0.5", "0.7", "0.9"]
-    assert [r["n_unreadable"] for r in rows] == ["", "2", "0"]
-    assert [r["config_hash"] for r in rows] == ["", "", "abc"]
+    assert [r["absrel"] for r in rows] == ["0.5", "0.6", "0.7", "0.9"]
+    assert [r["n_unreadable"] for r in rows] == ["", "2", "x", "0"]
+    assert [r["config_hash"] for r in rows] == ["", "", "h1", "abc"]
+    assert [r["holes_rmse"] for r in rows] == ["", "", "", "0.2"], "old rows get empty region cells"

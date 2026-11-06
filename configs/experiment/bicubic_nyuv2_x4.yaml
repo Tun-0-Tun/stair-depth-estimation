@@ -1,0 +1,26 @@
+# Floor for ducos_nyuv2_x4: bicubic x4 up, same 449 frames and protocol.
+defaults:
+  - dataset: nyuv2
+  - model: bicubic
+  - degradation: bicubic_x4
+
+seed: 0
+device: auto
+dataset:
+  # The DSR npy pack is not on the server; these are the same 449 test frames
+  # from the official labeled .mat. simulate_from: gt -- the .mat also carries
+  # rawDepths (real Kinect), which would otherwise replace the bicubic input.
+  layout: mat
+  mat_range: [1000, 1449]
+  simulate_from: gt
+eval:
+  crop: border6
+  pooling: image
+  min_depth: 0.001
+  max_depth: 10.0
+runtime:
+  measure: true
+  warmup: 10
+  iters: 50
+tracking:
+  backend: none

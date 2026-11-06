@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 from data.degradation.base import BaseDegradation, register_degradation
-from utils.misc import resize_depth
+from utils.misc import resize_depth, resize_pil, sparse_to_dense_nn
 
 __all__ = ["BicubicSRDegradation"]
 
@@ -40,6 +40,14 @@ class BicubicSRDegradation(BaseDegradation):
     """Std-dev of the additive noise on the LR depth, in metres (if ``noisy``)."""
     blur_sigma_px: float = 0.0
     """Optional pre-blur of the HR depth, mimicking the sensor PSF."""
+    fill_holes: bool = False
+    """Nearest-fill GT holes (0) before downsampling. For sensor-as-GT sets
+    (MinJiang, rgbd_stair): the anti-aliased resize otherwise smears every hole's
+    zeros ~4*scale px into the LR map, and the benchmark scores hole handling,
+    not SR. The metric mask is untouched -- holes are still never scored."""
+    backend: str = "torch"
+    """``pil`` = the DSR papers' own resize (anti-aliased); ``torch`` = aliased, kept
+    only so rows computed with it stay reproducible."""
 
     def apply(self, gt: np.ndarray, rng: np.random.Generator) -> Mapping[str, Any]:
         z = gt.astype(np.float32)
@@ -48,9 +56,15 @@ class BicubicSRDegradation(BaseDegradation):
 
             z = ndimage.gaussian_filter(z, self.blur_sigma_px)
 
+        if self.fill_holes and (z <= 0).any() and (z > 0).any():
+            z = sparse_to_dense_nn(z)
         h, w = z.shape
         s = int(self.scale)
-        lr = resize_depth(z, (max(1, h // s), max(1, w // s)), mode=self.mode)
+        lr_hw = (max(1, h // s), max(1, w // s))
+        if self.backend == "pil" and self.mode == "bicubic":
+            lr = resize_pil(z, lr_hw)
+        else:
+            lr = resize_depth(z, lr_hw, mode=self.mode)
         if self.noisy and self.noise_sigma_m > 0:
             lr = lr + rng.normal(0.0, self.noise_sigma_m, size=lr.shape).astype(np.float32)
         lr = np.clip(lr, 0.0, None).astype(np.float32)

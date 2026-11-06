@@ -2,6 +2,10 @@ name: hammer
 loader: hammer
 root: HAMMER
 split: test
+# Consecutive frames of a trajectory are near-duplicates, and 1224x1024 frames make every
+# method slow (local_bilateral: seconds per frame). Every 5th frame is ~570 of 2828,
+# the same frames for every experiment on this sheet. frame_stride: 1 = all.
+frame_stride: 5
 # d435 = active stereo (closest to the Astra 2), l515 = dToF, tof = Lucid I-ToF
 input_sensor: d435
 # Real layout: <root>/<scene>_traj<n>_<m>/polarization/{rgb,_gt,depth_d435,depth_l515,depth_tof}.

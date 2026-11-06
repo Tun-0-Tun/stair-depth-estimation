@@ -1,0 +1,97 @@
+"""Step geometry error (StairNetV2-style): height and depth (run) of the 3 steps nearest the camera.
+
+Needs the intrinsics ``K`` and tread/riser masks.  Everything is measured in the "up" frame of
+the GT: up = robust mean of the GT tread normals; height = P.up, depth coordinate = P.fwd with
+fwd = camera z projected on the horizontal plane.  Treads are the connected components of the
+tread mask, ordered by distance; ``rise_k`` = height(tread k+1) - height(tread k) (k = 0..2),
+``run_k`` = extent (max - min; sensitive to mask boundary pixels) of tread k along fwd, k = 0..2.  The same masks are used
+for prediction and GT, so the error isolates the depth error (the masks themselves are
+StairNet's, not ground truth).
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import torch
+from scipy import ndimage
+
+from models.planar_loss import normals_from_depth, robust_up
+
+
+def _points(depth: np.ndarray, K) -> np.ndarray:
+    if hasattr(K, "shape") and len(K.shape) == 3:  # undistorted ray map [2,H,W]
+        r = np.asarray(K, np.float64)
+        return np.stack([r[0] * depth, r[1] * depth, depth], -1)
+    fx, fy, cx, cy = K
+    v, u = np.mgrid[: depth.shape[0], : depth.shape[1]].astype(np.float64)
+    return np.stack([(u - cx) / fx * depth, (v - cy) / fy * depth, depth], -1)
+
+
+def _treads(tread: np.ndarray, depth: np.ndarray, min_px: int):
+    lab, n = ndimage.label(tread)
+    comps = [lab == i for i in range(1, n + 1) if (lab == i).sum() >= min_px]
+    return sorted(comps, key=lambda m: float(np.median(depth[m])))
+
+
+def up_vector(gt: np.ndarray, tread: np.ndarray, K, min_px: int = 200) -> np.ndarray | None:
+    t = torch.from_numpy(gt.astype(np.float32))[None, None]
+    n, ok = normals_from_depth(t, K, t > 0)
+    up, has = robust_up(n, torch.from_numpy(tread)[None, None] & ok, min_px)
+    return up[0].numpy().astype(np.float64) if has[0] else None
+
+
+def step_geometry(depth, tread, K, up, n_steps: int = 3, min_px: int = 200, comps=None):
+    """``{"rise": [n], "run": [n]}`` (NaN where a step is missing).
+
+    ``comps``: tread regions in step order; pass the SAME list for GT and prediction, otherwise a small depth
+    difference reorders / merges regions and the "error" is a bookkeeping artefact.
+    """
+    P = _points(depth, K)
+    fwd = np.array([0.0, 0.0, 1.0]) - up * up[2]
+    fwd /= np.linalg.norm(fwd)
+    if comps is None:
+        comps = _treads(tread & (depth > 0), depth, min_px)
+    h = [float(np.median(P[m] @ up)) for m in comps]
+    rise = [h[k + 1] - h[k] if k + 1 < len(h) else np.nan for k in range(n_steps)]
+    run = []
+    for k in range(n_steps):
+        if k < len(comps):
+            c = P[comps[k]] @ fwd
+            run.append(float(c.max() - c.min()))
+        else:
+            run.append(np.nan)
+    return {"rise": np.array(rise), "run": np.array(run)}
+
+
+def step_geometry_error(pred, gt, tread, K, n_steps: int = 3, min_px: int = 1500) -> dict[str, np.ndarray] | None:
+    """Absolute (m) and relative errors of rise/run for the nearest steps; ``None`` without a usable up vector.
+
+    Tread regions (>= ``min_px`` px) and their order come from the GT depth and are used for both maps.
+    """
+    up = up_vector(gt, tread & (gt > 0), K, min_px=min_px)
+    if up is None:
+        return None
+    comps = _treads(tread & (gt > 0), gt, min_px)
+    g = step_geometry(gt, tread, K, up, n_steps, min_px, comps)
+    p = step_geometry(pred, tread, K, up, n_steps, min_px, comps)
+    out = {}
+    for k in ("rise", "run"):
+        out[f"{k}_abs"] = np.abs(p[k] - g[k])
+        out[f"{k}_rel"] = np.abs(p[k] - g[k]) / np.maximum(np.abs(g[k]), 1e-6)
+    return out
+
+
+def tread_levels(gt, tread, K, up, bin_m: float = 0.04, min_px: int = 300) -> int:
+    """Number of distinct heights the tread pixels sit at (along the GT "up" vector).
+
+    A staircase has several (steps ~15 cm apart); flat ground with a few mislabelled "tread" blobs has one.
+    Heights are binned (``bin_m``), bins with >= ``min_px`` pixels count, adjacent bins merge into one level.
+    """
+    m = tread & (gt > 0)
+    if m.sum() < min_px:
+        return 0
+    h = (_points(gt.astype(np.float64), K)[m]) @ up
+    bins = np.floor((h - h.min()) / bin_m).astype(int)
+    counts = np.bincount(bins)
+    full = counts >= min_px
+    return int(np.sum(full & ~np.concatenate([[False], full[:-1]])))  # runs of adjacent filled bins

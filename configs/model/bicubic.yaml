@@ -2,3 +2,4 @@ name: bicubic
 adapter: bicubic
 available: true
 # Reference floor for depth super-resolution. No weights, runs anywhere.
+upsample: pil           # bicubic up the way the DSR papers do it (PIL)

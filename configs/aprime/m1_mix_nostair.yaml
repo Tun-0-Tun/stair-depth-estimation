@@ -1,0 +1,8 @@
+base: a1_validity.yaml
+# CONTROL for the mixed set: ours + VOID + Hypersim, NO stair terms. Separates "more data" from "stair loss".
+# Run with  degradation.preset=sequence_bicubic_x8_fill_lateral_projector_axial  (extras need a sensor chain).
+data:
+  extra:
+    - {dataset: void_stairs, target_size: [528, 688], native_size: [480, 640], flags: stair_flags_void_stairs_528.json, stair_terms: none, max_frames: 300}
+    - {dataset: hypersim, target_size: [528, 688], split_file: hypersim/stairs.json, stair_terms: none,
+       normals_K: [595.8, 609.7, 344.0, 264.0], loader_cfg: {force_normals: true}}

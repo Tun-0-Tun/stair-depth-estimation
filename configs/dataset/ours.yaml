@@ -1,0 +1,29 @@
+# Our Orbbec Astra 2 staircase captures (sample, 902 shots). No independent GT: the sensor's own
+# depth stands in as GT, so metrics are optimistic (like MinJiang) and meant for ranking methods.
+name: ours
+loader: ours
+root: ours/sample          # relative to $STAIR_DATA_ROOT
+split: test
+# (y0, y1, x0, x1) in RGB pixels: the 4:3 region the depth covers. null = whole 1080x1920 frame.
+crop: [12, 1068, 256, 1632]
+# half of the crop: both sides multiples of 16, and ~4x cheaper for every method. null = full crop.
+target_size: [528, 688]
+frame_stride: 1            # N = every N-th shot, an even spread over all stairs (902 shots; 9 -> ~100)
+# stairs: [..]             # keep only these `stairs id`s (needs shots.xlsx + openpyxl)
+min_depth: 0.6             # Astra 2 datasheet range, as in docs/metrics_protocol.md
+max_depth: 8.0
+eval:
+  crop: none
+docs: docs/datasets.md
+# Intrinsics of the RGB camera, from the Orbbec recording /cam/streamProfileType_2 in
+# raw/other/Orbbec Astra 2_AARW74100AD_20260911151248.bag (read with scripts/check_intrinsics.py inspect).
+# `intrinsics` = K IN THE CROPPED + RESIZED FRAME (crop and target_size above); `camera` = the 1920x1080 stream it was made from.
+# (Checked on ONE bag only -- run `inspect` over the staircase archives to confirm one calibration for all.)
+intrinsics: [626.911, 627.181, 353.325, 259.639]
+camera:
+  size: [1920, 1080]
+  K: [1253.823, 1254.361, 963.150, 531.778]
+  distortion_ob: [0.11249, -0.32884, 0.25819, 0.0, 0.0, 0.0, -0.0005, -0.00012]   # Brown-Conrady k1..k6, p1, p2
+  # false = pinhole K only. Set true (rays are undistorted in the planar loss / step metric) once
+  # `check_intrinsics.py check ... --dist ...` shows lower tread-plane rms for "K + distortion".
+  use_distortion: false

@@ -2,7 +2,7 @@
 
 Upstream: https://github.com/tayyabnasir22/WAVE
 Paper:    Nasir et al., "WAVE: Reversing the Guidance Hierarchy for Coarse-to-Fine
-          Guided Depth Super-Resolution", 2026 (arXiv:2601.17723)
+          Guided Depth Super-Resolution", 2026 (arXiv:2608.25302)
 
 .. important::
    Only x8, x16 and x32 are supported, one checkpoint each.  Scale has no
@@ -71,7 +71,7 @@ class WaveAdapter(BaselineModel):
 
     input_modality = "lr"
     native_size = None  # any size; padded to a multiple of max(16, scale) internally
-    paper = "Nasir et al., WAVE, 2026 (arXiv:2601.17723)"
+    paper = "Nasir et al., WAVE, 2026 (arXiv:2608.25302)"
     submodule = "wave"
 
     def __init__(

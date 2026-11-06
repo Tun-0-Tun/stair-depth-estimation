@@ -610,3 +610,142 @@ def test_nyuv2_mat_range_and_simulate_from_gt_give_the_dsr_protocol(tmp_path):
     )
     assert [r["id"] for r in ds.records] == ["nyu_0004", "nyu_0005"]
     assert np.allclose(ds[0]["lr_depth"], 2.0), "input must come from the GT, not rawDepths"
+
+
+def test_arkitscenes_skips_frames_whose_rgb_is_rotated_against_the_depth(tmp_path):
+    """A portrait RGB beside a landscape depth cannot be aligned; it must be dropped and
+    counted, not fail the whole run at frame 3000 (seen on the server)."""
+    Image = pytest.importorskip("PIL.Image")
+
+    vid = tmp_path / "data" / "upsampling" / "Validation" / "1"
+    for d in ("wide", "lowres_depth", "highres_depth"):
+        (vid / d).mkdir(parents=True)
+    for name, rgb_hw in (("1_1.0", (96, 128)), ("1_2.0", (128, 96))):  # second RGB is portrait
+        Image.fromarray(np.zeros((*rgb_hw, 3), np.uint8)).save(vid / "wide" / f"{name}.png")
+        Image.fromarray(np.full((12, 16), 1500, np.uint16)).save(
+            vid / "lowres_depth" / f"{name}.png"
+        )
+        Image.fromarray(np.full((96, 128), 1500, np.uint16)).save(
+            vid / "highres_depth" / f"{name}.png"
+        )
+
+    ds = build_dataset({"loader": "arkitscenes", "root": str(tmp_path)})
+    assert [r["id"] for r in ds.records] == ["1/1_1.0"]
+
+
+def test_hammer_frame_stride_is_per_trajectory(tmp_path):
+    """A global stride could skip a short trajectory altogether; per-trajectory keeps all."""
+    Image = pytest.importorskip("PIL.Image")
+
+    for seq, n in (("scene12_traj1_1", 12), ("scene13_traj1_1", 3)):
+        for d in ("rgb", "gt", "d435"):
+            (tmp_path / seq / d).mkdir(parents=True)
+        for i in range(n):
+            Image.fromarray(np.zeros((8, 8, 3), np.uint8)).save(
+                tmp_path / seq / "rgb" / f"{i:03d}.png"
+            )
+            for d in ("gt", "d435"):
+                Image.fromarray(np.full((8, 8), 1500, np.uint16)).save(
+                    tmp_path / seq / d / f"{i:03d}.png"
+                )
+
+    ds = build_dataset({"loader": "hammer", "root": str(tmp_path), "frame_stride": 5})
+    assert [r["id"] for r in ds.records] == [
+        "scene12_traj1_1/000",
+        "scene12_traj1_1/005",
+        "scene12_traj1_1/010",
+        "scene13_traj1_1/000",
+    ]
+
+
+def test_sensor_mask_survives_simulate_from_sensor(tmp_path):
+    """The hole split is scored against where the REAL sensor had no measurement, even when
+    the model is fed zones simulated from that sensor (which replace the input)."""
+    Image = pytest.importorskip("PIL.Image")
+
+    seq = tmp_path / "scene12_traj1_1"
+    for d in ("rgb", "gt", "d435"):
+        (seq / d).mkdir(parents=True)
+    Image.fromarray(np.zeros((16, 16, 3), np.uint8)).save(seq / "rgb" / "000.png")
+    Image.fromarray(np.full((16, 16), 2000, np.uint16)).save(seq / "gt" / "000.png")
+    d435 = np.full((16, 16), 2000, np.uint16)
+    d435[:4] = 0  # a band of holes
+    Image.fromarray(d435).save(seq / "d435" / "000.png")
+
+    deg = build_degradation(dict(load_config("degradation", "dtof_l5_center")))
+    s = build_dataset(
+        {"loader": "hammer", "root": str(tmp_path), "simulate_from": "sensor"}, degradation=deg
+    )[0]
+    assert s["sensor_mask"].dtype == bool and s["sensor_mask"].shape == (16, 16)
+    assert not s["sensor_mask"][:4].any() and s["sensor_mask"][4:].all()
+    assert (
+        s["sparse_depth"] > 0
+    ).sum() <= 64, "the model input is the 64 zones, not the sensor map"
+
+
+def _write_ours_shot(root, sid, h=120, w=200, depth_rows=(10, 110), depth_cols=(30, 170)):
+    from PIL import Image
+
+    rgb = (np.random.default_rng(sid).random((h, w, 3)) * 255).astype(np.uint8)
+    depth = np.zeros((h, w), dtype=np.uint16)
+    y0, y1 = depth_rows
+    x0, x1 = depth_cols
+    depth[y0:y1, x0:x1] = 1500 + 10 * np.arange(x1 - x0)[None, :]  # a slanted wall, in mm
+    Image.fromarray(rgb).save(root / f"s{sid}_rgb.png")
+    Image.fromarray(depth).save(root / f"s{sid}_depth_aligned_to_rgb.png")
+    Image.fromarray(((depth > 0) * 255).astype(np.uint8)).save(
+        root / f"s{sid}_mask_aligned_valid.png"
+    )
+
+
+def test_ours_loader_crops_to_the_depth_region_and_reads_millimetres(tmp_path):
+    """Metres, not mm; the empty margin is cropped away; ids sort numerically (s9 before s10)."""
+    pytest.importorskip("PIL")
+    for sid in (10, 9, 100):
+        _write_ours_shot(tmp_path, sid)
+
+    ds = build_dataset(
+        {"loader": "ours", "root": str(tmp_path), "crop": [10, 110, 30, 170], "min_depth": 0.6},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert [r["id"] for r in ds.records] == ["s9", "s10", "s100"]
+    strided = build_dataset(
+        {"loader": "ours", "root": str(tmp_path), "crop": None, "frame_stride": 2},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    assert [r["id"] for r in strided.records] == ["s9", "s100"]
+
+    s = ds[0]
+    validate_sample(s, "ours")
+    assert s["gt_depth"].shape == (100, 140) == s["rgb"].shape[:2]
+    assert float(s["gt_depth"].min()) > 1.4 and float(s["gt_depth"].max()) < 3.0, "mm -> m"
+    assert bool(s["mask"].all()), "after the crop every pixel has depth"
+    assert s["meta"]["gt_source"].startswith("sensor")
+
+    half = build_dataset(
+        {
+            "loader": "ours",
+            "root": str(tmp_path),
+            "crop": [10, 110, 30, 170],
+            "target_size": [50, 70],
+        },
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )[0]
+    assert half["gt_depth"].shape == half["rgb"].shape[:2] == (50, 70)
+
+
+def test_ours_loader_refuses_depth_in_another_frame(tmp_path):
+    """depth_raw is 4:3 and not registered to the RGB; feeding it would misalign every metric."""
+    from PIL import Image
+
+    pytest.importorskip("PIL")
+    _write_ours_shot(tmp_path, 1)
+    Image.fromarray(np.zeros((90, 120), dtype=np.uint16)).save(
+        tmp_path / "s1_depth_aligned_to_rgb.png"
+    )
+    ds = build_dataset(
+        {"loader": "ours", "root": str(tmp_path), "crop": None},
+        degradation=build_degradation({"type": "bicubic_sr", "scale": 4}),
+    )
+    with pytest.raises(ValueError, match="same frame"):
+        ds[0]

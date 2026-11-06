@@ -31,6 +31,10 @@ key              shape / dtype       meaning
 ``meta``         dict                see below
 ===============  ==================  ==========================================
 
+Optional key ``sensor_mask`` (H, W) bool: where the REAL sensor measured something
+(datasets with a native sparse input only).  The "metrics inside the sensor's
+holes" split, ``eval.regions: sensor_holes``, is built on it.
+
 ``meta`` always has: ``dataset``, ``sample_id``, ``split``, ``input_modality``
 (``"sparse"`` | ``"lr"`` | ``"synthetic"``), ``lr_scale``, ``min_depth``,
 ``max_depth``, ``rgb_path``, ``depth_path``.  Loaders may add ``intrinsics``
@@ -298,6 +302,13 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
         h, w = gt.shape
         modality = self.info.modality
 
+        # Where the REAL sensor measured something. Kept apart from `sparse_mask`, because
+        # simulate_from replaces the input below; this is what the "metrics inside the
+        # sensor's holes" split (eval.regions: sensor_holes) is built on.
+        sensor_mask = None
+        if sparse is not None:
+            sensor_mask = np.nan_to_num(np.asarray(sparse, dtype=np.float32)) > 0
+
         # ---- produce the input(s) --------------------------------------
         normals_used = normal_source = None
         deg_src = gt
@@ -324,6 +335,8 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
                     "normal_estimator": self.normals,
                     "force_normals": self.force_normals,
                 }
+            if getattr(self.degradation, "needs_context", False):
+                deg_kwargs["context"] = {"rgb": rgb, "sample_id": str(raw.get("sample_id", idx))}
             deg = self.degradation(deg_src, seed=self.seed * 1_000_003 + idx, **deg_kwargs)
             normals_used = deg.get("normals")
             normal_source = deg["meta"].get("normal_source")
@@ -392,6 +405,8 @@ class BaseDepthDataset(_TorchDataset, abc.ABC):
             "mask": mask,
             "meta": meta,
         }
+        if sensor_mask is not None:  # optional key: only datasets with a native sparse input
+            sample["sensor_mask"] = sensor_mask
         if normals_used is not None:  # optional key: only when a normals-using degradation ran
             sample["normals"] = np.asarray(normals_used, dtype=np.float32)
             meta["normal_source"] = normal_source

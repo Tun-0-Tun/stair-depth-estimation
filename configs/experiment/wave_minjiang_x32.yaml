@@ -9,6 +9,8 @@ defaults:
   - degradation: bicubic_x32
 
 seed: 0
+degradation:
+  fill_holes: true     # sensor-as-GT has holes; see sr_downsample.py
 device: auto
 model:
   checkpoint: checkpoints/wave/NYU32x.pth

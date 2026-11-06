@@ -1,7 +1,7 @@
 name: wave
 adapter: wave
 available: true
-paper: "Nasir et al., WAVE, 2026 (arXiv:2601.17723)"
+paper: "Nasir et al., WAVE, 2026 (arXiv:2608.25302)"
 submodule: third_party/wave
 # One checkpoint per scale; only x8 / x16 / x32 are supported. The weights do not
 # encode the scale, so scale and checkpoint must be changed together:

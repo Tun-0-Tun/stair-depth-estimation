@@ -36,6 +36,7 @@ EXPECTED: dict[str, tuple[str, tuple[str, ...]]] = {
         ),
     ),
     "minjiang": ("MinJiang-Dataset", ("STAIRS/CAM1_RGB", "STAIRS/CAM1_GDEP")),
+    "ours": ("ours/sample", ("shots.xlsx",)),
     # layout='mat' (the default). The h5 pack lives in nyudepthv2/val, the DSR
     # npy pack in test_images_v2.npy -- check those by hand if you switch.
     "nyuv2": ("nyu_depth_v2", ("nyu_depth_v2_labeled.mat",)),

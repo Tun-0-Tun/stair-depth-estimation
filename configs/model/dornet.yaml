@@ -1,0 +1,16 @@
+name: dornet
+adapter: dornet
+available: true
+paper: "Wang et al., DORNet, CVPR 2025 (arXiv:2410.11666)"
+submodule: third_party/dornet
+# Weights ship inside the submodule and are per scale / per dataset / full or tiny:
+#   NYU_X4|X8|X16 (synthetic bicubic), RGBDD, RGBDD_Noisy, TOFDSR, TOFDSR_Noisy; *_T = tiny.
+# scale, checkpoint and tiny_model must change together:
+#   override:  model.scale=8 model.checkpoint=third_party/dornet/checkpoints/NYU_X8.pth
+#   tiny:      model.tiny_model=true model.checkpoint=third_party/dornet/checkpoints/NYU_T_X4.pth
+scale: 4
+tiny_model: false
+# LR -> HR bicubic before the network: pil = upstream's Image.resize
+upsample: pil
+checkpoint: third_party/dornet/checkpoints/NYU_X4.pth
+docs: docs/baselines.md

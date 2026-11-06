@@ -1,4 +1,5 @@
-# Floor for the ARKitScenes rows: bicubic up from the real LiDAR grid.
+# Floor for wave_arkitscenes: bicubic up from the real LiDAR grid at the native 1440x1920
+# (ratio 7.5). DuCos has its own floor, bicubic_arkitscenes_768.
 # ARKitScenes upsampling Validation: real iPad LiDAR 256x192 in, Faro laser GT 1920x1440
 defaults:
   - dataset: arkitscenes

@@ -29,7 +29,7 @@ from utils.config import CONFIG_ROOT, load_config
 #: Baselines that need no weights and no CUDA -- the ones CI can really run.
 DEPENDENCY_FREE = ("nn_fill", "bicubic")
 #: Baselines wrapping third_party code; run only where they are installed.
-UPSTREAM = ("depthor", "ducos", "wave")
+UPSTREAM = ("depthor", "ducos", "wave", "dornet", "promptda", "prior_da", "omni_dc")
 
 
 @pytest.fixture(scope="module")
@@ -284,4 +284,82 @@ def test_local_bilateral_smoothing_keeps_a_step_and_leaves_flat_fields_alone():
     # Far from the seam the values are untouched; a plain Gaussian would bleed.
     assert sm_s[16, 2] == pytest.approx(1.0, abs=1e-3)
     assert sm_s[16, 29] == pytest.approx(5.0, abs=1e-3)
-    assert sm_s.min() >= 1.0 - 1e-6 and sm_s.max() <= 5.0 + 1e-6
+    assert sm_s.min() >= 1.0 - 1e-4 and sm_s.max() <= 5.0 + 1e-4  # float32
+
+
+def test_bicubic_sr_reproduces_the_dsr_papers_lr_input_exactly():
+    """DuCos/DKN/FDSR build LR with PIL bicubic down + up. Torch's aliased resize
+    gave a different input: the bicubic floor was 2.47 instead of ~2.3 on Middlebury
+    x4 and DuCos, fed an LR map it was never trained on, lost to that floor."""
+    Image = pytest.importorskip("PIL.Image")
+    import numpy as np
+
+    from baselines import build_baseline
+    from data.degradation import build_degradation
+
+    rng = np.random.default_rng(0)
+    gt = (rng.random((64, 96)) * 0.5 + np.linspace(0.2, 0.8, 96)[None]).astype(np.float32)
+
+    def pil(a, hw):
+        return np.asarray(Image.fromarray(a, mode="F").resize((hw[1], hw[0]), Image.BICUBIC))
+
+    upstream = pil(pil(gt, (16, 24)), (64, 96))  # middlebury_dataloader.py, verbatim
+    lr = build_degradation({"type": "bicubic_sr", "scale": 4, "backend": "pil"})(gt, seed=0)[
+        "lr_depth"
+    ]
+    floor = build_baseline(
+        {"adapter": "bicubic", "upsample": "pil"}, device="cpu", min_depth=0, max_depth=9
+    )
+    ours = floor.load().predict(np.zeros((64, 96, 3), np.float32), lr)
+    assert np.allclose(ours, upstream, atol=1e-6)
+
+
+def test_fill_holes_keeps_sensor_holes_out_of_the_lr_input():
+    """MinJiang's GT is the sensor, with 0 = hole. The anti-aliased x8 resize spreads
+    each hole's zeros over ~32 px of LR; WAVE then lost to bicubic on RMSE."""
+    import numpy as np
+
+    from data.degradation import build_degradation
+
+    gt = np.full((64, 64), 2.0, np.float32)
+    gt[28:36, 28:36] = 0.0  # one sensor hole
+    cfg = {"type": "bicubic_sr", "scale": 8, "backend": "pil"}
+    smeared = build_degradation(cfg)(gt, seed=0)["lr_depth"]
+    filled = build_degradation({**cfg, "fill_holes": True})(gt, seed=0)["lr_depth"]
+    assert smeared.min() < 1.5, "the failure this guards against"
+    assert np.allclose(filled, 2.0, atol=1e-4)
+
+
+def test_bilateral_torch_matches_the_float64_numpy_definition():
+    """The smoothing was ported from numpy to torch for speed (441 offsets of
+    full-frame ops were most of local_bilateral's runtime). Pin it to the plain
+    float64 definition so the port cannot drift."""
+    import numpy as np
+
+    from baselines.local_bilateral import _smooth_bilateral
+
+    rng = np.random.default_rng(0)
+    h, w, sig, rs, rmax = 24, 32, 3.0, 0.25, 7
+    s = rng.random((h, w)) * 3
+    t = rng.random((h, w)) * 2
+
+    r = max(1, min(round(2.5 * sig), rmax))
+    sr_s, sr_t = np.std(s) * rs, np.std(t) * rs
+    sp, tp = np.pad(s, r, mode="edge"), np.pad(t, r, mode="edge")
+    acc_s, acc_t, wsum = np.zeros((h, w)), np.zeros((h, w)), np.zeros((h, w))
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            spatial = np.exp(-0.5 * (dy * dy + dx * dx) / sig**2)
+            if spatial < 1e-6:
+                continue
+            sn, tn = (
+                sp[r + dy : r + dy + h, r + dx : r + dx + w],
+                tp[r + dy : r + dy + h, r + dx : r + dx + w],
+            )
+            wgt = spatial * np.exp(-0.5 * (((sn - s) / sr_s) ** 2 + ((tn - t) / sr_t) ** 2))
+            acc_s, acc_t, wsum = acc_s + wgt * sn, acc_t + wgt * tn, wsum + wgt
+
+    got_s, got_t = _smooth_bilateral(s, t, sig, rs, rmax)
+    assert np.allclose(got_s, acc_s / wsum, atol=1e-5) and np.allclose(
+        got_t, acc_t / wsum, atol=1e-5
+    )

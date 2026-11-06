@@ -1,0 +1,2 @@
+base: _base.yaml
+loss: {edge_weight: binary}

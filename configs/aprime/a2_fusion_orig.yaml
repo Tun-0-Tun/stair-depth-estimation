@@ -1,0 +1,2 @@
+base: _base.yaml
+model: {fusion: stairnetv2_orig}
