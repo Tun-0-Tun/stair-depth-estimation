@@ -14,6 +14,7 @@ rows:
   - {id: "M0", name: "row 6, stair terms only on strict stair-like frames", config: m0_ours_gated.yaml, kind: train, requires: intrinsics}
   - {id: "M1", name: "ours + VOID + Hypersim, no stair terms (control)", config: m1_mix_nostair.yaml, kind: train}
   - {id: "M2", name: "ours + VOID + Hypersim, stair terms gated", config: m2_mix_gated.yaml, kind: train, requires: intrinsics}
+  - {id: "W0", name: "pure WAVE fine-tuned (no validity channel)", config: w0_pure.yaml, kind: train}
   - {id: "N0", name: "reference: WAVE fine-tuned on NYUv2 only (our chain)", config: n0_nyu_only.yaml, kind: train}
   - {id: "DuCos",  name: "DuCos",   config: r_ducos.yaml,   kind: eval}
   - {id: "DEPTHOR", name: "DEPTHOR v1 (8x8 zone input)", config: r_depthor.yaml, kind: eval}

@@ -1,0 +1,4 @@
+base: a1_validity.yaml
+# PURE baseline: WAVE fine-tuned on our data under the sensor chain, WITHOUT the validity channel and without stair terms.
+# Row 1 minus the validity channel: shows what the channel itself is worth.
+model: {use_validity_channel: false}
