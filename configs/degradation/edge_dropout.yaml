@@ -4,7 +4,7 @@ type: edge_dropout
 # ----- edge parameters -----
 z_epsilon: 0.02                  # dimensionless; neighbour farther than z_epsilon * z from the tangent plane = edge (2 cm per m)
 z_step: 1                        # pixels; distance to the neighbours the z (tangent-plane) test looks at
-normal_thresh: 15.0              # degrees; a normal turning by more than this makes an edge pixel
+normal_thresh: 25.0              # degrees; a normal turning by more than this makes an edge pixel
 normal_step: 1                   # pixels; the normal test compares normals this far apart (adjacent ones are noise)
 normal_median: 5                 # pixels, odd; median filter on the normals before the normal test
 far_side_only: false             # true: mark only the far side of depth steps (the side stereo loses)
