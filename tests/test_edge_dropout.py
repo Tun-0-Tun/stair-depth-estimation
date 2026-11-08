@@ -4,11 +4,14 @@ from scipy import ndimage
 
 from data.degradation import EdgeDropoutDegradation, build_degradation
 from data.degradation.edge_dropout import (
+    _median_normals,
     _unit_normals,
     close_and_filter_edges,
     near_edge_mask,
+    normal_jump_mask,
     plane_edge_mask,
     smooth_noise,
+    z_jump_mask,
 )
 
 F = 570.0
@@ -137,6 +140,44 @@ def test_plane_classifier_finds_creases_through_the_normals():
     edge = _edges(z, n)  # no depth step at all
     assert edge[:, 36:44].all()  # within normal_step (4) of the crease, both sides
     assert not edge[:, :35].any() and not edge[:, 44:].any()
+
+
+def _jump_masks(z, n, **kw):
+    """The two tests on their own; ``n`` are raw normals, unit-normalised and unsmoothed."""
+    h, w = z.shape
+    un = _unit_normals(n, z.shape)
+    zj = z_jump_mask(
+        z.astype(np.float64), un, z > 0, fx=F, fy=F, cx=(w - 1) / 2, cy=(h - 1) / 2, **kw
+    )
+    return zj, normal_jump_mask(un)
+
+
+def test_z_jump_needs_a_depth_step_and_normal_jump_needs_a_turning_normal():
+    z = np.full((60, 80), 1.5, np.float32)
+    z[:, 40:] = 3.0  # depth step, the normals do not change
+    n = np.zeros((60, 80, 3), np.float32)
+    n[..., 2] = 1.0
+    zj, nj = _jump_masks(z, n, z_step=2)
+    assert zj[:, 38:42].all() and not nj.any()
+
+    z = np.full((60, 80), 2.0, np.float32)  # crease: the normal turns, the depth does not
+    n = np.zeros((60, 80, 3), np.float32)
+    n[:, :40, 2] = 1.0
+    n[:, 40:, 1], n[:, 40:, 2] = np.sin(np.radians(60)), np.cos(np.radians(60))
+    zj, nj = _jump_masks(z, n)
+    assert not zj.any() and nj[:, 36:44].all()
+    assert not nj[:, :35].any() and not nj[:, 44:].any()
+
+
+def test_plane_edge_mask_is_the_union_of_the_two_jump_masks():
+    z, n = _two_planes()
+    valid = z > 0
+    h, w = z.shape
+    un = _median_normals(_unit_normals(n, z.shape), 5)
+    zj = z_jump_mask(z.astype(np.float64), un, valid, fx=F, fy=F, cx=(w - 1) / 2, cy=(h - 1) / 2)
+    nj = normal_jump_mask(un)
+    np.testing.assert_array_equal(_edges(z, n), valid & (zj | nj))
+    assert zj.any() and nj.any()
 
 
 def _noisy_flat(deg_noise, h=200, w=240, seed=0):
