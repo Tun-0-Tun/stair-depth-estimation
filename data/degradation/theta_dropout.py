@@ -2,13 +2,13 @@
 
 A pixel is dropped (set to 0 = no measurement) with probability::
 
-    p(theta) = p0                                              theta <= theta_0
-    p(theta) = min(p_max, p0 + slope * (theta - theta_0))      theta >  theta_0
+    p(theta) = p_min                                         theta <= theta0
+    p(theta) = min(p_max, p_min + eta * (theta - theta0))    theta >  theta0
 
-so from ``theta_0`` the percentage of missing values grows linearly with the angle
-(``slope`` is the fraction added per degree).  ``theta`` is between the surface normal and the optical axis / viewing ray, as in
-``axial_noise`` and ``lateral_noise``; the normal map is resolved by
-``BaseDegradation.__call__``.  Pixels are dropped independently.
+so from ``theta0`` (degrees) the fraction of missing values grows linearly with the angle
+(``eta`` is the fraction added per degree).  ``theta`` is between the surface normal and the
+optical axis / viewing ray, as in ``axial_noise`` and ``lateral_noise``; the normal map is
+resolved by ``BaseDegradation.__call__``.  Pixels are dropped independently.
 
 Defaults are placeholders -- **uncalibrated** for the Astra 2.
 """
@@ -21,8 +21,9 @@ from typing import Any, ClassVar
 
 import numpy as np
 
-from data.degradation.axial import _fill_nearest, get_theta_map
 from data.degradation.base import BaseDegradation, register_degradation
+from data.norm import get_theta_map
+from utils.misc import fill_nan_nearest
 
 __all__ = ["ThetaDropoutDegradation", "apply_theta_dropout"]
 
@@ -36,24 +37,23 @@ class ThetaDropoutDegradation(BaseDegradation):
     uses_normals: ClassVar[bool] = True
 
     # --- dropout model ----------------------------------------------------
-    theta_0_deg: float = 60.0
-    """Angle above which the missing fraction starts to increase."""
-    p0: float = 0.0
-    """Missing fraction for ``theta <= theta_0``."""
-    slope_per_deg: float = 0.04
-    """Increase of the missing fraction per degree above ``theta_0``."""
+    theta0: float = 60.0
+    """Angle in degrees above which the missing fraction starts to increase."""
+    p_min: float = 0.0
+    """Missing fraction for ``theta <= theta0`` (0..1)."""
+    eta: float = 0.04
+    """Increase of the missing fraction per degree above ``theta0``."""
     p_max: float = 1.0
     """Upper cap on the missing fraction."""
 
-    # --- operating range --------------------------------------------------
-    z_min: float | None = 0.6
-    """GT closer than this is invalid, metres; None = no lower limit."""
-    z_max: float | None = 8.0
-    """GT farther than this is invalid, metres; None = no upper limit."""
-
     # --- normal-map handling ----------------------------------------------
-    normal_resize_mode: str = "nearest"
-    """``nearest`` (default, never invents a normal) or ``bilinear``."""
+    normal_resize_mode: str = "guided"
+    """``guided`` (default: bilinear inside a surface, nearest across a crease or
+    hole), ``nearest`` or ``bilinear``."""
+    normal_resize_order: str = "normals"
+    """``normals``: resize the vectors, then compute theta; ``theta``: the reverse."""
+    normal_threshold_deg: float = 10.0
+    """``guided`` only: angle above which a neighbour counts as another surface."""
     angle_reference: str = "optical_axis"
     """``optical_axis`` or ``viewing_ray`` (uses the intrinsics below)."""
     fill_missing_theta: bool = True
@@ -74,16 +74,14 @@ class ThetaDropoutDegradation(BaseDegradation):
     ) -> Mapping[str, Any]:
         z = gt.astype(np.float64)
         valid = np.isfinite(z) & (z > 0)
-        if self.z_min is not None:
-            valid &= z >= self.z_min
-        if self.z_max is not None:
-            valid &= z <= self.z_max
         z = np.where(valid, z, 0.0)
 
         theta = get_theta_map(
             normal,
             z.shape,
             resize_mode=self.normal_resize_mode,
+            resize_order=self.normal_resize_order,
+            normal_threshold_deg=self.normal_threshold_deg,
             angle_reference=self.angle_reference,
             fx=self.fx,
             fy=self.fy,
@@ -92,16 +90,16 @@ class ThetaDropoutDegradation(BaseDegradation):
         )
         theta_missing = float((~np.isfinite(theta) & valid).sum() / max(int(valid.sum()), 1))
         if self.fill_missing_theta:
-            theta = _fill_nearest(theta, target=valid)
+            theta = fill_nan_nearest(theta, target=valid)
         theta = np.nan_to_num(theta, nan=0.0)
 
         out = apply_theta_dropout(
             z,
             theta,
             rng,
-            theta_0_deg=self.theta_0_deg,
-            p0=self.p0,
-            slope_per_deg=self.slope_per_deg,
+            theta0=self.theta0,
+            p_min=self.p_min,
+            eta=self.eta,
             p_max=self.p_max,
         )
         n_valid = max(int(valid.sum()), 1)
@@ -118,11 +116,12 @@ class ThetaDropoutDegradation(BaseDegradation):
 
 
 def dropout_probability(
-    theta: np.ndarray, *, theta_0_deg: float, p0: float, slope_per_deg: float, p_max: float
+    theta: np.ndarray, *, theta0: float, p_min: float, eta: float, p_max: float
 ) -> np.ndarray:
     """Per-pixel missing probability for ``theta`` in radians."""
-    excess_deg = np.maximum(np.degrees(theta) - theta_0_deg, 0.0)
-    return np.clip(p0 + slope_per_deg * excess_deg, 0.0, p_max)
+    # delta: degrees by which theta exceeds theta0 (0 below theta0, so p stays at p_min there)
+    delta = np.maximum(np.degrees(theta) - theta0, 0.0)
+    return np.clip(p_min + eta * delta, 0.0, p_max)
 
 
 def apply_theta_dropout(
@@ -130,9 +129,9 @@ def apply_theta_dropout(
     theta: np.ndarray,
     rng: np.random.Generator,
     *,
-    theta_0_deg: float,
-    p0: float,
-    slope_per_deg: float,
+    theta0: float,
+    p_min: float,
+    eta: float,
     p_max: float,
 ) -> np.ndarray:
     """Return ``z`` (metres, 0 = invalid) with pixels dropped by ``p(theta)``.
@@ -142,8 +141,6 @@ def apply_theta_dropout(
     """
     z = np.asarray(z, dtype=np.float64)
     valid = np.isfinite(z) & (z > 0)
-    p = dropout_probability(
-        theta, theta_0_deg=theta_0_deg, p0=p0, slope_per_deg=slope_per_deg, p_max=p_max
-    )
+    p = dropout_probability(theta, theta0=theta0, p_min=p_min, eta=eta, p_max=p_max)
     drop = rng.random(z.shape) < p
     return np.where(valid & ~drop, z, 0.0).astype(np.float32)
