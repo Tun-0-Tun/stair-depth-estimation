@@ -3,16 +3,16 @@ type: edge_dropout
 
 # ----- edge parameters -----
 z_epsilon: 0.02                  # dimensionless; neighbour farther than z_epsilon * z from the tangent plane = edge (2 cm per m)
-z_step: 4                        # pixels; distance to the neighbours the z (tangent-plane) test looks at
-normal_thresh: 10.0              # degrees; a normal turning by more than this makes an edge pixel
-normal_step: 4                   # pixels; the normal test compares normals this far apart (adjacent ones are noise)
+z_step: 1                        # pixels; distance to the neighbours the z (tangent-plane) test looks at
+normal_thresh: 15.0              # degrees; a normal turning by more than this makes an edge pixel
+normal_step: 1                   # pixels; the normal test compares normals this far apart (adjacent ones are noise)
 normal_median: 5                 # pixels, odd; median filter on the normals before the normal test
 far_side_only: false             # true: mark only the far side of depth steps (the side stereo loses)
 fx: 570                          # pixels, ~640x480; rescale with the image (hypersim: set from its intrinsics)
 fy: null                         # pixels; null -> fx
 cx: null                         # pixels; null -> image centre
 cy: null
-closing_size: 3                  # pixels, odd; closing square: fills edge gaps up to closing_size - 1 pixels wide; filled pixels become edge pixels
+closing_size: 2                  # pixels, odd; closing square: fills edge gaps up to closing_size - 1 pixels wide; filled pixels become edge pixels
 
 # ----- dropout parameters -----
 min_patch_size: 40               # pixels; connected edge patches (after closing) smaller than this are removed as noise specks
