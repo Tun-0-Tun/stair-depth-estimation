@@ -1,0 +1,8 @@
+base: _base.yaml
+method: baseline
+# DEPTHOR fed one point per 8x8 pixel block of the SAME degraded map (the information our SR methods see), instead of
+# 64 zone points.  Use with scripts/finetune_baseline.py: the pretrained DEPTHOR has never seen so many points.
+baseline:
+  model: depthor
+  sparse_input: block_centers
+  overrides: {}

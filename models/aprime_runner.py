@@ -240,7 +240,9 @@ def baseline_predictor(cfg: dict, device: str):
             raw["sparse_depth"] = zone_center_sparse(src, grid) if mode == "zones" else block_center_sparse(src, scale, frac)
         return raw
 
-    return (lambda it: model.predict_sample(prepare(it))), model
+    predict = lambda it: model.predict_sample(prepare(it))  # noqa: E731
+    predict.prepare = prepare  # the same input for fine-tuning (scripts/finetune_baseline.py)
+    return predict, model
 
 
 def evaluate(cfg: dict, predict, ds: APrimeDataset, limit: int | None = None) -> dict[str, Any]:
