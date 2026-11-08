@@ -19,6 +19,7 @@ __all__ = [
     "REPO_ROOT",
     "data_root",
     "downsample_depth",
+    "fill_nan_nearest",
     "resize_depth",
     "resize_pil",
     "resize_rgb",
@@ -178,3 +179,24 @@ def sparse_to_dense_nn(sparse: np.ndarray, max_dist: int | None = None) -> np.nd
     if max_dist is not None:
         filled = np.where(dist <= max_dist, filled, 0.0)
     return filled.astype(np.float32)
+
+
+def fill_nan_nearest(values: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Fill NaNs inside ``target`` with the nearest finite value.
+
+    The NaN counterpart of :func:`sparse_to_dense_nn`, for maps where 0 is a
+    legitimate value (e.g. an angle map: 0 = facing the camera).  Only pixels
+    that are both NaN and in ``target`` (bool, e.g. valid depth) are written;
+    NaNs outside ``target`` are left as they are.  Any finite pixel may serve as
+    a source.  If nothing is finite, the written pixels become 0.
+    """
+    from scipy import ndimage
+
+    known = np.isfinite(values)
+    todo = ~known & target
+    if not todo.any():
+        return values
+    if not known.any():
+        return np.where(todo, 0.0, values).astype(values.dtype)
+    _, (iy, ix) = ndimage.distance_transform_edt(~known, return_indices=True)
+    return np.where(todo, values[iy, ix], values)

@@ -58,7 +58,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=float,
         metavar=("MIN", "MAX"),
         default=None,
-        help="depth range in metres (default: the axial preset's z_min/z_max, else 0.6 8.0)",
+        help="depth range in metres (default: 0.6 8.0)",
     )
     p.add_argument(
         "--n-points", type=int, default=200, help="depth samples per line (default: 200)"
@@ -82,20 +82,20 @@ def load_degradations(
 
 def axial_sigma_m(z: np.ndarray, theta_deg: float, ax: AxialDegradation) -> np.ndarray:
     """Axial std in metres at depth ``z`` (m); same formula as ``apply_axial_noise``."""
-    phi = np.clip(np.radians(theta_deg), 0.0, np.radians(ax.theta_max_deg))
-    sigma = ax.sigma_floor_m + ax.sigma_depth_gain * (z - ax.reference_depth_m) ** 2
-    grazing = ax.sigma_grazing_gain / np.sqrt(z) * phi**2 / (np.pi / 2 - phi) ** 2
-    if np.radians(ax.grazing_start_deg) < phi:
+    phi = np.clip(np.radians(theta_deg), 0.0, np.radians(ax.theta_max))
+    sigma = ax.sigma0 + ax.alpha * (z - ax.z0) ** 2
+    grazing = ax.beta / np.sqrt(z) * phi**2 / (np.pi / 2 - phi) ** 2
+    if np.radians(ax.theta0) < phi:
         sigma = sigma + grazing
-    return np.minimum(sigma, ax.sigma_max_m)
+    return np.minimum(sigma, ax.sigma_max)
 
 
 def lateral_sigma_m(z: np.ndarray, theta_deg: float, lat: LateralDegradation) -> np.ndarray:
     """Lateral std on the surface, metres, at depth ``z`` (m); same formula as
     ``apply_lateral_noise`` with pixels converted by ``z / fx``."""
-    phi = np.clip(np.radians(theta_deg), 0.0, np.radians(lat.theta_max_deg))
-    sigma_px = lat.sigma_floor_px + lat.sigma_angle_gain * phi / (np.pi / 2 - phi)
-    sigma_px = np.minimum(sigma_px, lat.sigma_max_px)
+    phi = np.clip(np.radians(theta_deg), 0.0, np.radians(lat.theta_max))
+    sigma_px = lat.sigma0 + lat.gamma * phi / (np.pi / 2 - phi)
+    sigma_px = np.minimum(sigma_px, lat.sigma_max)
     return sigma_px * z / lat.fx
 
 
@@ -155,8 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.z_range is not None:
         z_lo, z_hi = args.z_range
     else:
-        z_lo = axial.z_min if axial.z_min is not None else DEFAULT_Z_RANGE[0]
-        z_hi = axial.z_max if axial.z_max is not None else DEFAULT_Z_RANGE[1]
+        z_lo, z_hi = DEFAULT_Z_RANGE
     if not 0.0 < z_lo < z_hi:
         raise SystemExit("--z-range needs 0 < MIN < MAX")
 

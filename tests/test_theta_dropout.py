@@ -29,15 +29,15 @@ def test_seeded():
 
 
 @pytest.mark.parametrize("angle", [0, 30, 60])
-def test_base_rate_up_to_theta_0(angle):
-    assert _missing(angle, p0=0.0) == 0.0
-    assert _missing(angle, p0=0.1) == pytest.approx(0.1, abs=0.01)
+def test_base_rate_up_to_theta0(angle):
+    assert _missing(angle, p_min=0.0) == 0.0
+    assert _missing(angle, p_min=0.1) == pytest.approx(0.1, abs=0.01)
 
 
 @pytest.mark.parametrize("angle", [62, 65, 70, 80])
-def test_linear_growth_above_theta_0(angle):
+def test_linear_growth_above_theta0(angle):
     expected = 0.05 + 0.02 * (angle - 60)
-    got = _missing(angle, theta_0_deg=60.0, p0=0.05, slope_per_deg=0.02)
+    got = _missing(angle, theta0=60.0, p_min=0.05, eta=0.02)
     assert got == pytest.approx(expected, abs=0.01)
 
 
@@ -46,9 +46,7 @@ def test_default_slope_is_steeper_than_one_percent_per_degree():
 
 
 def test_capped_at_p_max():
-    assert _missing(85, theta_0_deg=60.0, slope_per_deg=0.05, p_max=0.4) == pytest.approx(
-        0.4, abs=0.01
-    )
+    assert _missing(85, theta0=60.0, eta=0.05, p_max=0.4) == pytest.approx(0.4, abs=0.01)
 
 
 def test_invalid_stays_zero_and_survivors_unchanged():
