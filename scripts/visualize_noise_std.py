@@ -93,9 +93,9 @@ def axial_sigma_m(z: np.ndarray, theta_deg: float, ax: AxialDegradation) -> np.n
 def lateral_sigma_m(z: np.ndarray, theta_deg: float, lat: LateralDegradation) -> np.ndarray:
     """Lateral std on the surface, metres, at depth ``z`` (m); same formula as
     ``apply_lateral_noise`` with pixels converted by ``z / fx``."""
-    phi = np.clip(np.radians(theta_deg), 0.0, np.radians(lat.theta_max_deg))
-    sigma_px = lat.sigma_floor_px + lat.sigma_angle_gain * phi / (np.pi / 2 - phi)
-    sigma_px = np.minimum(sigma_px, lat.sigma_max_px)
+    phi = np.clip(np.radians(theta_deg), 0.0, np.radians(lat.theta_max))
+    sigma_px = lat.sigma0 + lat.gamma * phi / (np.pi / 2 - phi)
+    sigma_px = np.minimum(sigma_px, lat.sigma_max)
     return sigma_px * z / lat.fx
 
 
@@ -155,8 +155,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.z_range is not None:
         z_lo, z_hi = args.z_range
     else:
-        z_lo = axial.z_min if axial.z_min is not None else DEFAULT_Z_RANGE[0]
-        z_hi = axial.z_max if axial.z_max is not None else DEFAULT_Z_RANGE[1]
+        z_lo, z_hi = DEFAULT_Z_RANGE
     if not 0.0 < z_lo < z_hi:
         raise SystemExit("--z-range needs 0 < MIN < MAX")
 
