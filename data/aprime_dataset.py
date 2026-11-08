@@ -228,6 +228,8 @@ class MixedDataset(torch.utils.data.ConcatDataset):
 
 def build_train(cfg: dict):
     """``ours`` train, plus the ``data.extra`` sources when the config lists any."""
-    ours = APrimeDataset(cfg, "train", train=True)
     extras = cfg["data"].get("extra") or []
-    return MixedDataset([ours, *(build_extra(cfg, s) for s in extras)]) if extras else ours
+    ours = [APrimeDataset(cfg, "train", train=True)] if cfg["data"].get("train_ours", True) else []  # False: extras only (NYU reference)
+    if not ours and not extras:
+        raise ValueError("data.train_ours=false needs data.extra")
+    return MixedDataset([*ours, *(build_extra(cfg, s) for s in extras)]) if extras else ours[0]

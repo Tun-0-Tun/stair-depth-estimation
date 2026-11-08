@@ -37,7 +37,7 @@ def main() -> None:
     set_seed(int(cfg.get("seed", 0)))
     device = resolve_device(cfg.get("device", "auto"))
     src = {"dataset": "nyuv2", "target_size": [528, 688], "native_size": [480, 640], "normals_K": NYU_K,
-           "stair_terms": "none", "loader_cfg": {"split": "test", "force_normals": True}}
+           "stair_terms": "none", "loader_cfg": {"split": "test", "force_normals": True, "mat_range": [1000, 1449]}}  # the DSR test split: WAVE trained on 0..999
     ds = build_extra(cfg, src, train=False)
     ds.with_raw = True
     if a.stride > 1:
