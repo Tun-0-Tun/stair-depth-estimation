@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from data.degradation import AxialDegradation, IdentityDegradation, build_degradation
-from data.degradation.axial import get_theta_map
+from data.norm import get_theta_map
+from utils.misc import fill_nan_nearest
 
 
 def _normal(h, w, deg):
@@ -39,15 +40,15 @@ def test_grazing_angle_increases_noise_and_stays_finite():
     gt = np.full((50, 50), 2.0, np.float32)
     out = AxialDegradation()(gt, seed=0, normal=_normal(50, 50, 90))["sparse_depth"]
     assert np.isfinite(out).all()
-    assert np.abs(out - 2.0).max() < 8 * 0.1  # sigma capped at sigma_max_m
+    assert np.abs(out - 2.0).max() < 8 * 0.1  # sigma capped at sigma_max
 
 
-def test_invalid_stays_zero_and_range():
+def test_invalid_stays_zero_and_no_range_clip():
     gt = np.full((40, 40), 2.0, np.float32)
     gt[:10] = 0.0
-    gt[10:20] = 20.0  # beyond z_max
+    gt[10:20] = 20.0  # far depth: no operating-range clip in this step
     out = AxialDegradation()(gt, seed=0, normal=_normal(40, 40, 10))["sparse_depth"]
-    assert (out[:20] == 0).all() and (out[20:] > 0).all()
+    assert (out[:10] == 0).all() and (out[10:] > 0).all()
 
 
 def test_normal_is_upscaled_and_holes_filled():
@@ -63,13 +64,11 @@ def test_normal_is_upscaled_and_holes_filled():
 
 
 def test_fill_only_touches_valid_depth_pixels():
-    from data.degradation.axial import _fill_nearest
-
     theta = np.full((8, 8), 0.5, np.float32)
     theta[2:6, 2:6] = np.nan
     valid = np.ones((8, 8), bool)
     valid[2:4, 2:6] = False
-    out = _fill_nearest(theta, valid)
+    out = fill_nan_nearest(theta, valid)
     assert np.isnan(out[2:4, 2:6]).all()
     assert np.isfinite(out[4:6, 2:6]).all()
 
@@ -98,12 +97,3 @@ def test_other_degradations_unaffected_and_buildable():
         IdentityDegradation()(gt, normal=_normal(8, 8, 0))["sparse_depth"], gt
     )
     assert isinstance(build_degradation({"type": "axial_noise"}), AxialDegradation)
-
-
-def test_range_limits_can_be_disabled():
-    gt = np.full((20, 20), 0.3, np.float32)  # closer than the 0.6 m default z_min
-    gt[:5] = 0.0
-    n = _normal(20, 20, 10)
-    assert (AxialDegradation()(gt, seed=0, normal=n)["sparse_depth"] == 0).all()
-    out = AxialDegradation(z_min=None, z_max=None)(gt, seed=0, normal=n)["sparse_depth"]
-    assert (out[:5] == 0).all() and (out[5:] > 0).all()
