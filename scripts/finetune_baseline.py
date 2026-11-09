@@ -83,9 +83,12 @@ def main() -> None:
     n_steps = max(1, a.epochs * len(ds) // a.accum)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_steps)
     log, best, step = (out / "train_log.jsonl").open("a"), float("inf"), 0
+    ad.model.eval()
+    with torch.no_grad():  # sanity: must be close to the zero-shot row before any update
+        print(f"[ft] before training: val absrel {evaluate(cfg, predict, val, None)['full']['absrel']:.4f}", flush=True)
     for ep in range(a.epochs):
         ds.set_epoch(ep)
-        ad.model.train()
+        ad.model.eval()  # batch 1: train-mode BatchNorm/dropout would corrupt running stats and the output (L1 2.9 m in the smoke)
         t0, acc, run = time.perf_counter(), 0, []
         for i in np.random.default_rng(ep).permutation(len(ds)):
             it = ds[int(i)]
