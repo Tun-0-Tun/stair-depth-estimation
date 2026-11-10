@@ -18,3 +18,4 @@ rows:
   - {id: "N0", name: "reference: WAVE fine-tuned on NYUv2 only (our chain)", config: n0_nyu_only.yaml, kind: train}
   - {id: "DuCos",  name: "DuCos",   config: r_ducos.yaml,   kind: eval}
   - {id: "DEPTHOR", name: "DEPTHOR v1 (8x8 zone input)", config: r_depthor.yaml, kind: eval}
+  - {id: "N1", name: "M0 + NYUv2 (300 frames, our chain, no stair terms)", config: n1_mix_nyu.yaml, kind: train, requires: intrinsics}

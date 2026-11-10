@@ -1,0 +1,8 @@
+base: m0_ours_gated.yaml
+# M0 (ours, stair terms gated) + ordinary indoor data: NYUv2 frames 0..899 under OUR chain, no stair terms.
+# 300 NYU frames keep ours at ~68% of an epoch. Test frames 1000+ stay untouched (eval_nyu.py). Model selection on ours val.
+# Run with degradation.preset=sequence_bicubic_x8_fill_lateral_projector_axial. Compare with M0 (ours) and N0/row 1 (NYU).
+data:
+  extra:
+    - {dataset: nyuv2, target_size: [528, 688], native_size: [480, 640], stair_terms: none, max_frames: 300,
+       normals_K: [557.77, 571.42, 350.0, 279.11], loader_cfg: {force_normals: true, mat_range: [0, 900]}}
