@@ -1,0 +1,5 @@
+base: n1_mix_nyu.yaml
+# N1 (M0 + NYU) + TRAINING-only randomised sensor chain (levels x parameter jitter, data/degradation/randomized.py). Val and test keep
+# degradation.preset (pass the main chain on the command line), so the numbers stay comparable with M0.
+# When the two further strength levels exist, add them to `levels` in configs/degradation/sequence_random_x8.yaml.
+degradation: {train_preset: sequence_random_x8}

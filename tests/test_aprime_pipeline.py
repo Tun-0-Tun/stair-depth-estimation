@@ -179,3 +179,30 @@ def test_extra_source_is_mixed_in_and_trains(tmp_path, monkeypatch):
     extra_item = ds[len(ds) - 1]
     assert not (extra_item["tread"].any() or extra_item["E"].any())  # no stair terms on that source
     train(cfg, tmp_path / "out", smoke=3)
+
+
+def test_gt_edge_map_marks_jumps_and_ignores_invalid_neighbours():
+    from data.aprime_dataset import gt_edge_map
+
+    gt = np.full((20, 20), 2.0, np.float32)
+    gt[:, 10:] = 3.0  # a 50% jump between columns 9 and 10
+    valid = np.ones_like(gt, bool)
+    e = gt_edge_map(gt, valid, rel=0.1, sigma=2.0)
+    assert e[5, 9] == 1.0 and e[5, 10] == 1.0 and e[5, 0] < 0.01
+    valid[:, 10:] = False  # the other side is a hole, not a jump
+    assert gt_edge_map(gt, valid).max() == 0.0
+
+
+def test_random_train_chain_and_gt_edge_weight_train(tmp_path, monkeypatch):
+    """train_preset randomises only the TRAIN split; the GT-jump edge weight reaches the loss on every frame."""
+    from data.aprime_dataset import APrimeDataset
+    from models.aprime_runner import train
+
+    cfg = _chain_cfg(tmp_path, monkeypatch, ["degradation.train_preset=sequence_random_x8",
+                                             "loss.gt_edge_alpha=2.0", "loss.gt_edge_rel=0.05"])
+    cfg["name"] = "smoke_random_gt_edge"
+    tr, va = APrimeDataset(cfg, "train", train=True, with_raw=True), APrimeDataset(cfg, "val", with_raw=True)
+    assert type(tr.base.degradation).__name__ == "RandomSequentialDegradation"
+    assert type(va.base.degradation).__name__ == "SequentialDegradation"
+    assert float(tr[0]["Egt"].max()) > 0.0
+    train(cfg, tmp_path / "out", smoke=3)

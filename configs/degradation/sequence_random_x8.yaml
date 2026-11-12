@@ -1,0 +1,10 @@
+# TRAINING-ONLY randomisation of the main chain (use via degradation.train_preset; val/test keep degradation.preset).
+# levels: one sequential preset per sensor strength level. Today the single main chain; when the two further strength levels
+# exist, append their preset names here (and, if wanted, weights). Jitter = log-uniform multiplicative factors per sample.
+type: random_sequential
+levels: [sequence_bicubic_x8_fill_lateral_projector_axial]
+jitter_prob: 0.7           # else the level is applied exactly as is (the test chain stays in the mix)
+jitter:
+  lateral_noise: {sigma_floor_px: [0.5, 1.6], sigma_angle_gain: [0.5, 1.6]}
+  projector_shadow: {offset_t: [0.6, 1.5], depth_tol_rel: [0.5, 2.0]}
+  axial_noise: {sigma_floor_m: [0.5, 1.6], sigma_depth_gain: [0.5, 1.6]}

@@ -50,7 +50,7 @@ def build_ours(cfg: dict, split: str, train: bool = False):
     """
     d = dict(cfg["data"])
     deg = dict(cfg["degradation"])
-    preset = deg.get("preset")
+    preset = (deg.get("train_preset") if train else None) or deg.get("preset")  # train_preset: training-only randomised chain
     if preset:
         from utils.config import load_config
 
@@ -84,6 +84,23 @@ def load_gate(path: str | Path) -> dict[str, bool]:
     return {k: bool(v["stair_like_strict"]) for k, v in load_split(path).items()}
 
 
+def gt_edge_map(gt: np.ndarray, valid: np.ndarray, rel: float = 0.1, sigma: float = 3.0) -> np.ndarray:
+    """exp(-d^2 / 2 sigma^2), d = distance to the nearest GT depth jump (relative jump > ``rel`` between valid neighbours).
+
+    Needs no StairNet: it marks every depth discontinuity (thin railings, bars, stair nosings alike)."""
+    from scipy import ndimage
+
+    d = np.where(valid, gt, np.nan).astype(np.float32)
+    j = np.zeros(gt.shape, bool)
+    with np.errstate(invalid="ignore"):  # a NaN (invalid neighbour) compares False
+        dx = np.abs(d[:, 1:] - d[:, :-1]) / np.fmin(d[:, 1:], d[:, :-1]) > rel
+        dy = np.abs(d[1:] - d[:-1]) / np.fmin(d[1:], d[:-1]) > rel
+    j[:, 1:] |= dx; j[:, :-1] |= dx; j[1:] |= dy; j[:-1] |= dy
+    if not j.any():
+        return np.zeros(gt.shape, np.float32)
+    return np.exp(-(ndimage.distance_transform_edt(~j) ** 2) / (2 * sigma**2)).astype(np.float32)
+
+
 class APrimeDataset(Dataset):
     """``base`` / ``cache`` / ``gate`` / ``stair_terms`` default to the ``ours`` recipe; ``build_extra`` sets them for other sources.
 
@@ -106,6 +123,7 @@ class APrimeDataset(Dataset):
         self.fill = d.get("fill", "nearest")
         self.edge_mode = l.get("edge_weight", "none")
         self.band_px = float(l.get("edge_band_px", 6))
+        self.gt_edge = (float(l.get("gt_edge_rel", 0.1)), float(l.get("gt_edge_sigma_px", 3.0))) if float(l.get("gt_edge_alpha", 0.0)) > 0 else None
         self.stair_bg = bool(l.get("stair_bg_boundary", True))
         self.flip = train and not l.get("use_planar_loss", False)  # hflip would move cx
         self.lr_min_frac = float(cfg["degradation"].get("lr_min_frac", 0.5))
@@ -162,6 +180,7 @@ class APrimeDataset(Dataset):
             "rgb": rgb.transpose(2, 0, 1), "lr": lr_n[None], "lr_valid": lr_valid[None].astype(np.float32),
             "gt_n": gt_n[None], "valid": s["mask"][None], "E": m["E"][None], "band": m["band"][None],
             "ignore": m["ignore"][None], "tread": m["tread"][None], "riser": m["riser"][None],
+            "Egt": (gt_edge_map(s["gt_depth"], s["mask"], *self.gt_edge) if self.gt_edge else np.zeros_like(m["E"]))[None],
         }
         if self.flip and np.random.default_rng([i, self._epoch]).random() < 0.5:
             t = {k: np.ascontiguousarray(v[..., ::-1]) for k, v in t.items()}
@@ -186,7 +205,7 @@ def build_extra(cfg: dict, src: dict, train: bool = True) -> APrimeDataset:
     from data.stairnet.cache import cache_dir
     from utils.config import load_config
 
-    preset = cfg["degradation"].get("preset")
+    preset = (cfg["degradation"].get("train_preset") if train else None) or cfg["degradation"].get("preset")
     if not preset:
         raise ValueError("data.extra needs degradation.preset (a sensor chain): the legacy astra_hard degrades HR frames of ours only")
     ds_cfg = {k: v for k, v in dict(load_config("dataset", src["dataset"])).items() if k != "split"}

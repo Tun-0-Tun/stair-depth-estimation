@@ -38,6 +38,7 @@ def rec_loss_map(pred, gt, valid, lambda_grad: float = 0.1) -> torch.Tensor:
 class LossConfig:
     alpha: float = 0.0  # edge weight; 0 = off
     beta: float = 0.0  # planar weight; 0 = off
+    gt_alpha: float = 0.0  # weight of the GT-depth-jump edge map (no StairNet, all frames); 0 = off
     planar_warmup_steps: int = 1000
     huber_delta: float = 0.1
     normal_source: str = "gt"
@@ -64,6 +65,8 @@ class AprimeLoss:
         c = self.cfg
         valid = b["valid"]
         W = 1.0 + c.alpha * b["E"] * (~b["ignore"]).float() if c.alpha > 0 else 1.0
+        if c.gt_alpha > 0:
+            W = W + c.gt_alpha * b["Egt"]
         rec = rec_loss_map(pred_n, b["gt_n"], valid, c.lambda_grad)
         l_rec = (W * rec).sum() / valid.float().sum().clamp_min(1.0)
         out = {"rec": l_rec.detach(), "total": l_rec}

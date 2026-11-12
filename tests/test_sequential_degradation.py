@@ -136,3 +136,18 @@ def test_builds_from_yaml_type():
     deg = build_degradation({"type": "sequential", "steps": ["projector_shadow", "bicubic_x4"]})
     assert isinstance(deg, SequentialDegradation)
     assert deg.steps == ["projector_shadow", "bicubic_x4"]
+
+
+def test_random_sequential_levels_jitter_and_determinism():
+    gt, n = _gt(), _normals()
+    preset = {"type": "random_sequential", "levels": ["sequence_lateral_projector_axial"], "jitter_prob": 1.0,
+              "jitter": {"lateral_noise": {"sigma_floor_px": [0.5, 2.0]}, "projector_shadow": {"offset_t": [0.5, 2.0]}}}
+    deg = build_degradation(preset)
+    a, b = deg(gt, normal=n, seed=1), deg(gt, normal=n, seed=1)
+    assert np.array_equal(a["sparse_depth"], b["sparse_depth"])
+    j = a["meta"]["jitter"]
+    assert set(j) == {"lateral_noise.sigma_floor_px", "projector_shadow.offset_t"} and all(0.5 <= v <= 2.0 for v in j.values())
+    assert a["meta"]["level"] == "sequence_lateral_projector_axial"
+    off = build_degradation({**preset, "jitter_prob": 0.0})(gt, normal=n, seed=1)
+    ref = build_degradation(dict(load_config("degradation", "sequence_lateral_projector_axial")))
+    assert off["meta"]["jitter"] == {} and off["sparse_depth"].shape == ref(gt, normal=n, seed=1)["sparse_depth"].shape

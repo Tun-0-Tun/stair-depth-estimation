@@ -1,0 +1,4 @@
+base: n1_mix_nyu.yaml
+# N1 (M0 + NYU) + an edge weight from GT depth jumps on EVERY frame (no StairNet): W += gt_edge_alpha * exp(-d^2/2 sigma^2), d = distance
+# to a relative depth jump > gt_edge_rel. Targets thin structures (railings, bars) where the StairNet terms do not act.
+loss: {gt_edge_alpha: 2.0, gt_edge_rel: 0.1, gt_edge_sigma_px: 3.0}

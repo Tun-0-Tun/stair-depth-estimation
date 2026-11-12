@@ -19,3 +19,5 @@ rows:
   - {id: "DuCos",  name: "DuCos",   config: r_ducos.yaml,   kind: eval}
   - {id: "DEPTHOR", name: "DEPTHOR v1 (8x8 zone input)", config: r_depthor.yaml, kind: eval}
   - {id: "N1", name: "M0 + NYUv2 (300 frames, our chain, no stair terms)", config: n1_mix_nyu.yaml, kind: train, requires: intrinsics}
+  - {id: "D1", name: "N1 + randomised training degradation (levels x jitter)", config: d1_random_degradation.yaml, kind: train, requires: intrinsics}
+  - {id: "G1", name: "N1 + GT-depth-jump edge weight on all frames", config: g1_gt_edge.yaml, kind: train, requires: intrinsics}
