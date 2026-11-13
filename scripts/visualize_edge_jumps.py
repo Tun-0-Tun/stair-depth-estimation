@@ -28,6 +28,8 @@ from typing import Any
 import _bootstrap
 import numpy as np
 
+from utils.intrinsics import resolve_intrinsics
+
 DEFAULT_OUT_DIR = _bootstrap.REPO_ROOT / "outputs" / "edge_viz"  # gitignored
 
 DEPTH_RGB = (1.0, 0.0, 0.0)  # red
@@ -69,21 +71,6 @@ def load_samples(dataset: str, n: int) -> list[dict[str, Any]]:
         dict(load_config("dataset", dataset)), degradation=IdentityDegradation(), max_samples=n
     )
     return [ds[i] for i in range(len(ds))]
-
-
-def resolve_intrinsics(
-    cfg: dict, sample: dict, h: int, w: int
-) -> tuple[float, float, float, float]:
-    """Pick (fx, fy, cx, cy) from the YAML, falling back as ``EdgeDropoutDegradation.apply`` does."""
-    k = sample["meta"].get("intrinsics")
-    if k is not None:
-        fx, fy, cx, cy = (float(v) for v in k)
-        return fx, fy, cx, cy
-    fx = float(cfg["fx"])
-    fy = fx if cfg.get("fy") is None else float(cfg["fy"])
-    cx = (w - 1) / 2.0 if cfg.get("cx") is None else float(cfg["cx"])
-    cy = (h - 1) / 2.0 if cfg.get("cy") is None else float(cfg["cy"])
-    return fx, fy, cx, cy
 
 
 def _dilated(mask: np.ndarray | None, shape: tuple[int, int]) -> np.ndarray:
@@ -151,8 +138,8 @@ def plot(samples: list[dict], cfg: dict, args: argparse.Namespace):
         matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    from data.degradation.edge_dropout import _median_normals, normal_jump_mask, z_jump_mask
     from data.norm import build_normal_map
+    from data.norm.edge_mask import _median_normals, normal_jump_mask, z_jump_mask
     from utils.config import load_config
 
     estimator = build_normal_map(dict(load_config("normals", args.normals)))
