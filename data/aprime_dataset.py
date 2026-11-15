@@ -109,13 +109,14 @@ class APrimeDataset(Dataset):
     """
 
     def __init__(self, cfg: dict, split: str, train: bool = False, with_raw: bool = False, base=None, cache="auto",
-                 gate: dict[str, bool] | None = None, stair_terms: str = "all") -> None:
+                 gate: dict[str, bool] | None = None, stair_terms: str = "all", K=None) -> None:
         self.cfg, self.train, self.with_raw, self._epoch = cfg, train, with_raw, 0
         self.base = build_ours(cfg, split, train) if base is None else base
         d, l = cfg["data"], cfg["loss"]
         self.scale = int(cfg["model"]["scale"])
         self.cache = resolve_cache(d) if cache == "auto" else cache
         self.stair_terms = stair_terms
+        self.K = K if K is not None else (cfg["data"].get("intrinsics") if base is None else None)  # frame K for the normal loss
         if gate is None and base is None and train and d.get("stair_gate_file"):
             gate = load_gate(d["stair_gate_file"])
         self.gate = gate
@@ -125,7 +126,7 @@ class APrimeDataset(Dataset):
         self.band_px = float(l.get("edge_band_px", 6))
         self.gt_edge = (float(l.get("gt_edge_rel", 0.1)), float(l.get("gt_edge_sigma_px", 3.0))) if float(l.get("gt_edge_alpha", 0.0)) > 0 else None
         self.stair_bg = bool(l.get("stair_bg_boundary", True))
-        self.flip = train and not l.get("use_planar_loss", False)  # hflip would move cx
+        self.flip = train and not (l.get("use_planar_loss", False) or float(l.get("normal_beta", 0.0)) > 0)  # hflip would move cx
         self.lr_min_frac = float(cfg["degradation"].get("lr_min_frac", 0.5))
         if self.cache is None and stair_terms != "none" and (self.edge_mode != "none" or l.get("use_planar_loss")):
             raise ValueError("edge_weight / planar loss need StairNet masks: set data.stair_cache (mask_source != none)")
@@ -180,10 +181,11 @@ class APrimeDataset(Dataset):
             "rgb": rgb.transpose(2, 0, 1), "lr": lr_n[None], "lr_valid": lr_valid[None].astype(np.float32),
             "gt_n": gt_n[None], "valid": s["mask"][None], "E": m["E"][None], "band": m["band"][None],
             "ignore": m["ignore"][None], "tread": m["tread"][None], "riser": m["riser"][None],
+            "K": np.asarray(self.K if self.K else [0, 0, 0, 0], np.float32),
             "Egt": (gt_edge_map(s["gt_depth"], s["mask"], *self.gt_edge) if self.gt_edge else np.zeros_like(m["E"]))[None],
         }
         if self.flip and np.random.default_rng([i, self._epoch]).random() < 0.5:
-            t = {k: np.ascontiguousarray(v[..., ::-1]) for k, v in t.items()}
+            t = {k: v if k == "K" else np.ascontiguousarray(v[..., ::-1]) for k, v in t.items()}
         out = {k: torch.from_numpy(v) for k, v in t.items()}
         out["dmin"], out["dmax"] = torch.tensor([[[dmin]]]), torch.tensor([[[dmax]]])
         out["input_invalid_frac"] = torch.tensor(float((s["sparse_depth"] <= 0).mean()))  # share of missing pixels of the input map
@@ -236,7 +238,7 @@ def build_extra(cfg: dict, src: dict, train: bool = True) -> APrimeDataset:
         base.records = base.records[:: -(-len(base.records) // int(src["max_frames"]))]
     terms = src.get("stair_terms", "none")
     cache = None if terms == "none" else str(cache_dir(src.get("stair_cache", f"{src['dataset']}/stairnet_cache")))
-    return APrimeDataset(cfg, "train", train, base=base, cache=cache, gate=gate, stair_terms=terms)
+    return APrimeDataset(cfg, "train", train, base=base, cache=cache, gate=gate, stair_terms=terms, K=src.get("normals_K"))
 
 
 class MixedDataset(torch.utils.data.ConcatDataset):

@@ -23,3 +23,4 @@ rows:
   - {id: "G1", name: "N1 + GT-depth-jump edge weight on all frames", config: g1_gt_edge.yaml, kind: train, requires: intrinsics}
   - {id: "N1s", name: "M0 + NYUv2 150 frames (dose-response)", config: n1s_mix_nyu_150.yaml, kind: train, requires: intrinsics}
   - {id: "N3", name: "M0 + NYUv2 900 frames (dose-response)", config: n3_mix_nyu_all.yaml, kind: train, requires: intrinsics}
+  - {id: "C1", name: "N3 + normal-consistency loss on all frames", config: c1_normal_consistency.yaml, kind: train, requires: intrinsics}

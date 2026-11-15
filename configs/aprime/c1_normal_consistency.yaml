@@ -1,0 +1,5 @@
+base: n3_mix_nyu_all.yaml
+# N3 (ours + all 900 NYU frames) + a surface-normal consistency loss on EVERY frame: 1 - cos(n(pred), n(GT)), normals from the
+# depth and the per-source camera K (ours: data.intrinsics, NYU: normals_K; sources without K are skipped). The planar loss
+# generalised: no StairNet, no stair labels, acts on NYU and on thin structures. Weight normal_beta, warm-up = planar_warmup_steps.
+loss: {normal_beta: 0.1}

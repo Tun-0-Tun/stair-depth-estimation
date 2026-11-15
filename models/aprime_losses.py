@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn.functional as F
 
-from models.planar_loss import planar_loss
+from models.planar_loss import box_smooth, normals_from_depth, planar_loss
 
 _SX = torch.tensor([[-1.0, 0, 1], [-2, 0, 2], [-1, 0, 1]]).view(1, 1, 3, 3)
 
@@ -38,6 +38,7 @@ def rec_loss_map(pred, gt, valid, lambda_grad: float = 0.1) -> torch.Tensor:
 class LossConfig:
     alpha: float = 0.0  # edge weight; 0 = off
     beta: float = 0.0  # planar weight; 0 = off
+    nc_beta: float = 0.0  # normal-consistency weight (all frames, per-sample K in the batch); 0 = off
     gt_alpha: float = 0.0  # weight of the GT-depth-jump edge map (no StairNet, all frames); 0 = off
     planar_warmup_steps: int = 1000
     huber_delta: float = 0.1
@@ -60,6 +61,24 @@ class AprimeLoss:
         c = self.cfg
         return c.beta * min(1.0, step / c.planar_warmup_steps) if c.planar_warmup_steps > 0 else c.beta
 
+    def normal_consistency(self, pred_n: torch.Tensor, b: dict) -> torch.Tensor:
+        """1 - cos(normal of the prediction, normal of the GT), on every frame whose camera K is known (b["K"] [B,4], 0 = unknown).
+
+        Generalises the planar loss: no StairNet, no stair labels, so it also acts on NYU frames and on railings/thin structures."""
+        sc = b["dmax"] - b["dmin"]
+        pred_m, gt_m = pred_n * sc + b["dmin"], b["gt_n"] * sc + b["dmin"]
+        terms = []
+        for i in range(pred_m.shape[0]):
+            K = b["K"][i]
+            if float(K[0]) <= 0:
+                continue
+            zs, vs = box_smooth(gt_m[i:i + 1], b["valid"][i:i + 1], 5)
+            n_g, ok_g = normals_from_depth(zs, K.tolist(), vs)
+            n_p, ok_p = normals_from_depth(pred_m[i:i + 1], K.tolist(), b["valid"][i:i + 1])
+            ok = (ok_g & ok_p).float()
+            terms.append(((1.0 - (n_p * n_g.detach()).sum(1, keepdim=True)) * ok).sum() / ok.sum().clamp_min(1.0))
+        return torch.stack(terms).mean() if terms else pred_n.sum() * 0.0
+
     def __call__(self, pred_n: torch.Tensor, b: dict, step: int = 0) -> dict[str, torch.Tensor]:
         """``b``: gt_n, valid, E, dmin, dmax, tread, riser, band, ignore (all [B,1,H,W] / [B,1,1,1])."""
         c = self.cfg
@@ -72,6 +91,10 @@ class AprimeLoss:
         out = {"rec": l_rec.detach(), "total": l_rec}
         beta = self.beta(step)
         out["beta"] = torch.tensor(beta)
+        if c.nc_beta > 0 and "K" in b:
+            l_nc = self.normal_consistency(pred_n, b)
+            out["nc"] = l_nc.detach()
+            out["total"] = out["total"] + c.nc_beta * min(1.0, step / c.planar_warmup_steps if c.planar_warmup_steps > 0 else 1.0) * l_nc
         if c.beta > 0:
             sc = b["dmax"] - b["dmin"]
             pred_m, gt_m = pred_n * sc + b["dmin"], b["gt_n"] * sc + b["dmin"]

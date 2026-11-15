@@ -217,3 +217,20 @@ def test_tread_levels_tell_a_staircase_from_flat_ground_with_false_blobs():
     blobs[150:200, 60:120] = blobs[170:220, 200:290] = True
     upf = np.array([0.0, -1.0, 0.0])
     assert tread_levels(floor, blobs, K, upf) == 1
+
+
+def test_normal_consistency_zero_on_gt_positive_on_tilted_and_skips_unknown_k():
+    import torch
+
+    from models.aprime_losses import AprimeLoss, LossConfig
+
+    H = W = 32
+    gt = torch.full((2, 1, H, W), 2.0)
+    tilt = gt + 0.05 * torch.arange(W).view(1, 1, 1, W).float()  # a slanted plane
+    b = {"gt_n": gt, "valid": torch.ones(2, 1, H, W, dtype=torch.bool), "dmin": torch.zeros(2, 1, 1, 1),
+         "dmax": torch.ones(2, 1, 1, 1), "K": torch.tensor([[30.0, 30.0, 16.0, 16.0]] * 2)}
+    loss = AprimeLoss(LossConfig(nc_beta=1.0))
+    assert float(loss.normal_consistency(gt, b)) < 1e-4
+    assert float(loss.normal_consistency(tilt, b)) > 0.01
+    b["K"] = torch.zeros(2, 4)  # unknown camera: the term is skipped, not an error
+    assert float(loss.normal_consistency(tilt, b)) == 0.0

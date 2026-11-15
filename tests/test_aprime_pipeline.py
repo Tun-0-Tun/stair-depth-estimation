@@ -206,3 +206,11 @@ def test_random_train_chain_and_gt_edge_weight_train(tmp_path, monkeypatch):
     assert type(va.base.degradation).__name__ == "SequentialDegradation"
     assert float(tr[0]["Egt"].max()) > 0.0
     train(cfg, tmp_path / "out", smoke=3)
+
+
+def test_normal_consistency_loss_trains_end_to_end(tmp_path, monkeypatch):
+    from models.aprime_runner import train
+
+    cfg = _chain_cfg(tmp_path, monkeypatch, ["loss.normal_beta=0.1"])
+    cfg["name"] = "smoke_nc"
+    train(cfg, tmp_path / "out", smoke=3)
