@@ -46,6 +46,9 @@ def main() -> None:
     ap.add_argument("--ours", action="append", default=[], metavar="LABEL=best.pth[:config.yaml]",
                     help="a trained A' row, repeatable, e.g. ft_base=.../1/best.pth:configs/aprime/a1_validity.yaml "
                          "ours=.../4/best.pth:configs/aprime/a4_planar.yaml (no LABEL= -> 'ours'; default config a4_planar)")
+    ap.add_argument("--ft", action="append", default=[], metavar="LABEL=ducos|depthor:best.pth",
+                    help="a baseline fine-tuned by scripts/finetune_baseline.py, repeatable, e.g. DuCos=outputs/.../DuCos_ft/best.pth "
+                         "(LABEL=model:ckpt with model = ducos | depthor)")
     ap.add_argument("--preset", help="degradation preset from configs/degradation/ (the sensor chain)")
     ap.add_argument("--severity", default="strong")
     ap.add_argument("--out", default="outputs/viz")
@@ -80,6 +83,12 @@ def main() -> None:
             print(f"[skip] {m}: {type(e).__name__}: {e}")
             continue
         preds[m] = [np.asarray(predict(it), np.float32) for it in tqdm(items, desc=m)]
+    for spec in a.ft:
+        label, rest = spec.split("=", 1)
+        model, _, ckpt = rest.partition(":")
+        cfg = load_cfg(f"configs/aprime/{CFG[model]}", [*deg_ov, f"baseline.overrides.checkpoint={ckpt}", *a.set])
+        predict, _ = baseline_predictor(cfg, dev)
+        preds[label] = [np.asarray(predict(it), np.float32) for it in tqdm(items, desc=label)]
     for spec in a.ours:
         label, rest = spec.split("=", 1) if "=" in spec.split(":")[0] else ("ours", spec)
         ckpt, _, conf = rest.partition(":")

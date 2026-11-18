@@ -70,7 +70,9 @@ def main() -> None:
         raise SystemExit("needs data.intrinsics (frame K) in configs/dataset/ours.yaml")
     ds = APrimeDataset(cfg, a.split)
     res = {}
-    for i in range(len(ds)):
+    from tqdm import tqdm
+
+    for i in tqdm(range(len(ds))):
         s = ds.base[i]
         res[s["meta"]["sample_id"]] = {**frame_quality(s["gt_depth"], s["mask"], ds.masks(s), K),
                                        "stairs_id": s["meta"].get("stairs_id")}
