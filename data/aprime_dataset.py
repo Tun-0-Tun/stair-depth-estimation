@@ -101,6 +101,54 @@ def gt_edge_map(gt: np.ndarray, valid: np.ndarray, rel: float = 0.1, sigma: floa
     return np.exp(-(ndimage.distance_transform_edt(~j) ** 2) / (2 * sigma**2)).astype(np.float32)
 
 
+def zones_to_lr(sparse: np.ndarray, scale: int, mode: str = "interp", grid: tuple[int, int] = (8, 8),
+                interp: str = "bilinear", sigma_frac: float = 0.5):
+    """LR input of WAVE from a dToF-like map: ONE point per zone (``dtof_l5_center``, DEPTHOR's own 8x8 input).
+
+    Returns ``lr`` [H/scale, W/scale], ``valid`` (bool: where ``lr`` is a measurement) and ``conf`` (float map that replaces
+    the validity channel, or None).  ``mode``:
+      interp       the zone values interpolated to the LR size (a missing zone takes its nearest zone's value); valid = all
+      interp_conf  the same lr, ``conf`` = exp(-d^2 / 2 s^2), d = LR-pixel distance to the nearest MEASURED zone centre,
+                   s = sigma_frac * the mean zone size in LR pixels
+      points       only the measured zone centres (lr = 0 elsewhere, valid marks them); the dataset then fills nearest
+    """
+    import torch.nn.functional as F
+    from scipy import ndimage
+
+    if mode not in ("interp", "interp_conf", "points"):
+        raise ValueError(f"zones_input.mode must be interp | interp_conf | points, got {mode!r}")
+    h, w = sparse.shape
+    lh, lw = h // scale, w // scale
+    gh, gw = grid
+    ys, xs = np.linspace(0, h, gh + 1).round().astype(int), np.linspace(0, w, gw + 1).round().astype(int)
+    z = np.zeros((gh, gw), np.float32)
+    for i in range(gh):
+        for j in range(gw):
+            v = sparse[ys[i] : ys[i + 1], xs[j] : xs[j + 1]]
+            v = v[v > 0]
+            if v.size:
+                z[i, j] = np.median(v)
+    known = z > 0
+    lr, valid = np.zeros((lh, lw), np.float32), np.zeros((lh, lw), bool)
+    if not known.any():
+        return lr, valid, None
+    cy = np.clip(((ys[:-1] + ys[1:]) // 2) // scale, 0, lh - 1)
+    cx = np.clip(((xs[:-1] + xs[1:]) // 2) // scale, 0, lw - 1)
+    mark = np.zeros((lh, lw), bool)
+    for i, j in zip(*np.nonzero(known), strict=True):
+        mark[cy[i], cx[j]] = True
+        lr[cy[i], cx[j]] = z[i, j]
+    if mode == "points":
+        return lr, mark, None
+    up = F.interpolate(torch.from_numpy(sparse_to_dense_nn(z))[None, None], size=(lh, lw), mode=interp, align_corners=False)
+    lr = np.clip(up[0, 0].numpy(), float(z[known].min()), float(z[known].max())).astype(np.float32)  # bicubic may overshoot
+    valid = np.ones((lh, lw), bool)
+    if mode == "interp":
+        return lr, valid, None
+    s = sigma_frac * 0.5 * (lh / gh + lw / gw)
+    return lr, valid, np.exp(-((ndimage.distance_transform_edt(~mark) / s) ** 2) / 2).astype(np.float32)
+
+
 class APrimeDataset(Dataset):
     """``base`` / ``cache`` / ``gate`` / ``stair_terms`` default to the ``ours`` recipe; ``build_extra`` sets them for other sources.
 
@@ -128,6 +176,8 @@ class APrimeDataset(Dataset):
         self.stair_bg = bool(l.get("stair_bg_boundary", True))
         self.flip = train and not (l.get("use_planar_loss", False) or float(l.get("normal_beta", 0.0)) > 0)  # hflip would move cx
         self.lr_min_frac = float(cfg["degradation"].get("lr_min_frac", 0.5))
+        zi = d.get("zones_input")  # dToF-like sensor (degradation.preset=dtof_l5_center): LR input built from the zone points
+        self.zones = {**dict(zi), "grid": tuple(dict(zi).get("grid", (8, 8)))} if zi else None
         if self.cache is None and stair_terms != "none" and (self.edge_mode != "none" or l.get("use_planar_loss")):
             raise ValueError("edge_weight / planar loss need StairNet masks: set data.stair_cache (mask_source != none)")
 
@@ -163,7 +213,10 @@ class APrimeDataset(Dataset):
 
     def __getitem__(self, i: int) -> dict[str, Any]:
         s = self.base[i]
-        if s["sparse_depth"].shape != s["gt_depth"].shape:  # chain that already works at low resolution: use its map as is
+        conf = None
+        if self.zones:
+            lr, lr_valid, conf = zones_to_lr(s["sparse_depth"], self.scale, **self.zones)
+        elif s["sparse_depth"].shape != s["gt_depth"].shape:  # chain that already works at low resolution: use its map as is
             lr = np.asarray(s["lr_depth"], np.float32)
             lr_valid = lr > 0
         else:
@@ -178,7 +231,7 @@ class APrimeDataset(Dataset):
         rgb = ((s["rgb"] - IMAGENET_MEAN) / IMAGENET_STD).astype(np.float32)
         m = self.masks(s)
         t = {
-            "rgb": rgb.transpose(2, 0, 1), "lr": lr_n[None], "lr_valid": lr_valid[None].astype(np.float32),
+            "rgb": rgb.transpose(2, 0, 1), "lr": lr_n[None], "lr_valid": (lr_valid if conf is None else conf)[None].astype(np.float32),
             "gt_n": gt_n[None], "valid": s["mask"][None], "E": m["E"][None], "band": m["band"][None],
             "ignore": m["ignore"][None], "tread": m["tread"][None], "riser": m["riser"][None],
             "K": np.asarray(self.K if self.K else [0, 0, 0, 0], np.float32),

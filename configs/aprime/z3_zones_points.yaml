@@ -1,0 +1,4 @@
+base: m0_ours_gated.yaml
+# Optional: the 64 measured zone centres only (as DEPTHOR sees them): LR map = points filled nearest, validity channel = where
+# a point is.  Far from the dense LR map WAVE was pretrained on, so expect harder fine-tuning than z1 / z2.
+data: {zones_input: {mode: points, grid: [8, 8]}}

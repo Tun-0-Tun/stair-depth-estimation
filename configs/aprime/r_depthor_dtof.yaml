@@ -1,0 +1,8 @@
+base: _base.yaml
+method: baseline
+# DEPTHOR on its OWN input: the 8x8 dToF zones simulated from the clean GT (data/degradation/dtof_sim.py, one pixel per zone).
+# Run with  degradation.preset=dtof_l5_center  (no sparse_input: the chain already writes one point per zone).
+# Pretrained weights = zero-shot row; fine-tune with scripts/finetune_baseline.py (the adapter loads its best.pth).
+baseline:
+  model: depthor
+  overrides: {}

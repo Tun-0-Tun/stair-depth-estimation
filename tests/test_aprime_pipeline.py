@@ -214,3 +214,56 @@ def test_normal_consistency_loss_trains_end_to_end(tmp_path, monkeypatch):
     cfg = _chain_cfg(tmp_path, monkeypatch, ["loss.normal_beta=0.1"])
     cfg["name"] = "smoke_nc"
     train(cfg, tmp_path / "out", smoke=3)
+
+
+def test_zones_to_lr_modes_on_a_plane():
+    from data.aprime_dataset import zones_to_lr
+
+    h, w, g = 128, 176, (8, 8)
+    yy, xx = np.mgrid[0:h, 0:w]
+    plane = (2.0 + 0.004 * xx + 0.002 * yy).astype(np.float32)
+    sp = np.zeros((h, w), np.float32)
+    ys, xs = np.linspace(0, h, 9).round().astype(int), np.linspace(0, w, 9).round().astype(int)
+    for i in range(8):
+        for j in range(8):
+            if (i, j) != (3, 4):  # one dropped zone
+                sp[(ys[i] + ys[i + 1]) // 2, (xs[j] + xs[j + 1]) // 2] = plane[(ys[i] + ys[i + 1]) // 2, (xs[j] + xs[j + 1]) // 2]
+    lr, valid, conf = zones_to_lr(sp, 8, "interp", g)
+    assert lr.shape == (16, 22) and valid.all() and conf is None
+    assert abs(float(lr[8, 11]) - float(plane[64:72, 88:96].mean())) < 0.15  # a plane stays a plane (inside the zone grid)
+    lr2, valid2, conf2 = zones_to_lr(sp, 8, "interp_conf", g)
+    assert np.allclose(lr, lr2) and conf2.shape == lr.shape and 0.0 < conf2.min() < conf2.max() <= 1.0
+    assert conf2[3, 4] == pytest.approx(1.0) and conf2[7, 12] < 0.5  # measured centre = 1, the dropped zone's centre is far from any
+    lr3, valid3, conf3 = zones_to_lr(sp, 8, "points", g)
+    assert valid3.sum() == 63 and (lr3 > 0).sum() == 63 and conf3 is None
+    z, v, c = zones_to_lr(np.zeros((h, w), np.float32), 8, "interp_conf", g)
+    assert not v.any() and c is None and not z.any()  # nothing measured: a degenerate frame, handled by the caller
+    with pytest.raises(ValueError):
+        zones_to_lr(sp, 8, "nope", g)
+
+
+@pytest.mark.parametrize("mode", ["interp", "interp_conf", "points"])
+def test_dtof_zones_input_trains_end_to_end(tmp_path, monkeypatch, mode):
+    """DEPTHOR's 8x8 dToF input (dtof_l5_center) -> the LR map of WAVE; one point per zone reaches the dataset."""
+    from data.aprime_dataset import APrimeDataset
+    from models.aprime_runner import train
+
+    cfg = _chain_cfg(tmp_path, monkeypatch, [
+        "degradation.preset=dtof_l5_center", f"data.zones_input.mode={mode}", "model.use_validity_channel=" + ("false" if mode == "interp" else "true"),
+        "loss.use_planar_loss=false", "loss.edge_weight=none"])
+    cfg["name"] = f"smoke_zones_{mode}"
+    ds = APrimeDataset(cfg, "train", train=True, with_raw=True)
+    it = ds[0]
+    h, w = it["raw"]["gt_depth"].shape
+    assert it["lr"].shape == (1, h // 8, w // 8) and (it["raw"]["sparse_depth"] > 0).sum() <= 64  # one pixel per zone
+    assert 0.0 <= float(it["lr_valid"].min()) and float(it["lr_valid"].max()) <= 1.0 and float(it["lr_valid"].max()) > 0
+    train(cfg, tmp_path / "out", smoke=3)
+
+
+def test_dtof_preset_without_zones_input_still_serves_the_baselines(tmp_path, monkeypatch):
+    """DEPTHOR fine-tuning reads raw['sparse_depth'] (one point per zone); the LR tensors of A' are not used and must not crash."""
+    from data.aprime_dataset import APrimeDataset
+
+    cfg = _chain_cfg(tmp_path, monkeypatch, ["degradation.preset=dtof_l5_center", "loss.use_planar_loss=false", "loss.edge_weight=none"])
+    it = APrimeDataset(cfg, "val", with_raw=True)[0]
+    assert 0 < (it["raw"]["sparse_depth"] > 0).sum() <= 64

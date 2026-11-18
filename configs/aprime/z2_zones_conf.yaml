@@ -1,0 +1,4 @@
+base: m0_ours_gated.yaml
+# As z1 (same interpolated 8x8 input), but the validity channel carries a confidence map: exp(-d^2 / 2 s^2), d = distance to the
+# nearest MEASURED zone centre, so the network knows where the interpolation is backed by a measurement (dropped zones are low).
+data: {zones_input: {mode: interp_conf, grid: [8, 8], interp: bilinear, sigma_frac: 0.5}}

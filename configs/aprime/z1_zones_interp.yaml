@@ -1,0 +1,5 @@
+base: m0_ours_gated.yaml
+# Our modification (M0: stair terms on verified frames) on the SAME 8x8 dToF input as DEPTHOR (degradation.preset=dtof_l5_center).
+# The 8x8 zone values are interpolated (bilinear) to the 66x86 LR map WAVE expects; no validity channel: pure interpolation.
+data: {zones_input: {mode: interp, grid: [8, 8], interp: bilinear}}
+model: {use_validity_channel: false}
