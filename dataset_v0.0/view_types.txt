@@ -1,0 +1,11 @@
+w - walking
+a - ascend
+d - descend 
+g - geometry
+u - upper
+s - side
+o - obteructed
+c - complicated
+h - from high
+p - paired
+b - back
