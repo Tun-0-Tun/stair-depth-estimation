@@ -176,8 +176,9 @@ class APrimeDataset(Dataset):
         self.stair_bg = bool(l.get("stair_bg_boundary", True))
         self.flip = train and not (l.get("use_planar_loss", False) or float(l.get("normal_beta", 0.0)) > 0)  # hflip would move cx
         self.lr_min_frac = float(cfg["degradation"].get("lr_min_frac", 0.5))
-        zi = d.get("zones_input")  # dToF-like sensor (degradation.preset=dtof_l5_center): LR input built from the zone points
-        self.zones = {**dict(zi), "grid": tuple(dict(zi).get("grid", (8, 8)))} if zi else None
+        zi = dict(d.get("zones_input") or {})  # dToF-like sensor (degradation.preset=dtof_l5_center): LR input built from the zone points
+        self.zones_norm = zi.pop("norm", "lr")  # lr: min-max of the LR map (default) | sensor: the fixed sensor range min_depth..max_depth
+        self.zones = {**zi, "grid": tuple(zi.get("grid", (8, 8)))} if d.get("zones_input") else None
         if self.cache is None and stair_terms != "none" and (self.edge_mode != "none" or l.get("use_planar_loss")):
             raise ValueError("edge_weight / planar loss need StairNet masks: set data.stair_cache (mask_source != none)")
 
@@ -221,9 +222,13 @@ class APrimeDataset(Dataset):
             lr_valid = lr > 0
         else:
             lr, lr_valid = masked_downsample(s["sparse_depth"], self.scale, self.lr_min_frac)
-        if lr_valid.any():
+        if self.zones and self.zones_norm == "sensor":  # zones beyond the dToF range (4 m) are missing: GT must not fall outside [0, 1]
+            lr_valid_any = False
+        else:
+            lr_valid_any = bool(lr_valid.any())
+        if lr_valid_any:
             dmin, dmax = float(lr[lr_valid].min()), float(lr[lr_valid].max())
-        if not lr_valid.any() or dmax - dmin < 1e-6:  # degenerate frame: fall back to the sensor range
+        if not lr_valid_any or dmax - dmin < 1e-6:  # degenerate frame (or norm: sensor): the sensor range
             dmin, dmax = float(self.base.min_depth), float(self.base.max_depth)
         lr_f = sparse_to_dense_nn(lr) if self.fill == "nearest" and lr_valid.any() else lr
         lr_n = np.where(lr_f > 0, np.clip((lr_f - dmin) / (dmax - dmin), 0, 1), 0).astype(np.float32)

@@ -28,4 +28,6 @@ rows:
   - {id: "ZD0", name: "DEPTHOR pretrained, its own 8x8 dToF input (dtof_l5_center)", config: r_depthor_dtof.yaml, kind: eval}
   - {id: "Z1", name: "M0 on 8x8 dToF, zones interpolated, no validity channel", config: z1_zones_interp.yaml, kind: train, requires: intrinsics}
   - {id: "Z2", name: "M0 on 8x8 dToF, zones interpolated + confidence as validity channel", config: z2_zones_conf.yaml, kind: train, requires: intrinsics}
+  - {id: "Z1n", name: "Z1 with the fixed sensor range as the depth normalisation", config: z1n_interp_sensor.yaml, kind: train, requires: intrinsics}
+  - {id: "Z2n", name: "Z2 with the fixed sensor range as the depth normalisation", config: z2n_conf_sensor.yaml, kind: train, requires: intrinsics}
   - {id: "Z3", name: "M0 on 8x8 dToF, measured zone centres only + validity", config: z3_zones_points.yaml, kind: train, requires: intrinsics}

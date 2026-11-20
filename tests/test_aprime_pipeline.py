@@ -267,3 +267,16 @@ def test_dtof_preset_without_zones_input_still_serves_the_baselines(tmp_path, mo
     cfg = _chain_cfg(tmp_path, monkeypatch, ["degradation.preset=dtof_l5_center", "loss.use_planar_loss=false", "loss.edge_weight=none"])
     it = APrimeDataset(cfg, "val", with_raw=True)[0]
     assert 0 < (it["raw"]["sparse_depth"] > 0).sum() <= 64
+
+
+def test_zones_norm_sensor_keeps_gt_inside_the_unit_range_on_deep_frames(tmp_path, monkeypatch):
+    """dToF reports nothing beyond 4 m; min-max of the zone map then leaves the far GT outside [0, 1].  norm: sensor uses 0.6..8 m."""
+    from data.aprime_dataset import APrimeDataset
+
+    over = ["degradation.preset=dtof_l5_center", "loss.use_planar_loss=false", "loss.edge_weight=none", "data.zones_input.mode=interp"]
+    cfg = _chain_cfg(tmp_path, monkeypatch, over)
+    cfg_s = _chain_cfg(tmp_path / "s", monkeypatch, over + ["data.zones_input.norm=sensor"])
+    a, b = APrimeDataset(cfg, "train", with_raw=True)[0], APrimeDataset(cfg_s, "train", with_raw=True)[0]
+    assert float(b["dmin"]) == pytest.approx(0.6) and float(b["dmax"]) == pytest.approx(8.0)
+    assert float(a["dmin"]) != pytest.approx(0.6) or float(a["dmax"]) != pytest.approx(8.0)  # the default is unchanged: min-max of the LR map
+    assert float(b["lr"].max()) <= 1.0 and float(b["gt_n"][b["valid"]].max()) <= 1.0
