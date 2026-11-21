@@ -61,6 +61,8 @@ def main() -> None:
     base = load_cfg("configs/aprime/a1_validity.yaml", [*deg_ov, *a.set])
     ds = APrimeDataset(base, "test", train=False, with_raw=True)
 
+    if a.ids == []:  # `--ids $EMPTY_VAR` must not silently fall back to the automatic choice
+        raise SystemExit("--ids was given but is empty (is the shell variable set?)")
     if a.ids:
         ids = {r["id"]: i for i, r in enumerate(ds.base.records)}
         picks = [ids[s] for s in a.ids]

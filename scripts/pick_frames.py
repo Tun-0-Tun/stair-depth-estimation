@@ -33,20 +33,26 @@ def main() -> None:
     ap.add_argument("--both", action="store_true", help="failure = EVERY baseline is worse than ours (gap = min over baselines), "
                     "not just the worst one")
     ap.add_argument("--ours-max", type=float, help="failure: keep only frames where ours AbsRel <= this")
+    ap.add_argument("--no-gate", action="store_true", help="all test frames, not only strict stair-like ones")
+    ap.add_argument("--ratio", action="store_true", help="rank by baseline/ours AbsRel instead of the difference")
     a = ap.parse_args()
     rows = [a.ours, a.wave, *a.baselines]
     missing = [r for r in rows if not (Path(a.dir) / r / "test.json").exists()]
     if missing:
         raise SystemExit(f"no test.json in {a.dir} for rows {missing}")
     pf = {r: per_frame(Path(a.dir) / r / "test.json") for r in rows}
-    gate = {k for k, v in json.loads(Path(a.gate).read_text()).items() if v["stair_like_strict"]}
-    ids = sorted(set.intersection(*(set(v) for v in pf.values())) & gate)
-    print(f"{len(ids)} strict stair-like frames present in all of {rows}")
+    ids = set.intersection(*(set(v) for v in pf.values()))
+    if not a.no_gate:
+        ids &= {k for k, v in json.loads(Path(a.gate).read_text()).items() if v["stair_like_strict"]}
+    ids = sorted(ids)
+    print(f"{len(ids)} frames ({'all' if a.no_gate else 'strict stair-like'}) present in all of {rows}")
     mean = {i: np.mean([pf[r][i] for r in rows]) for i in ids}
     med = np.median(list(mean.values()))
     typical = sorted(ids, key=lambda i: abs(mean[i] - med))[: a.top]
     agg = min if a.both else max
     gap = {i: agg(pf[r][i] for r in a.baselines) - pf[a.ours][i] for i in ids}
+    if a.ratio:
+        gap = {i: agg(pf[r][i] for r in a.baselines) / pf[a.ours][i] for i in ids}
     cand = [i for i in ids if a.ours_max is None or pf[a.ours][i] <= a.ours_max]
     fail = sorted(cand, key=lambda i: -gap[i])[: a.top]
     for name, lst in (("typical", typical), ("failure", fail)):
