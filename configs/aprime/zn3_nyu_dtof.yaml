@@ -1,0 +1,5 @@
+base: n3_mix_nyu_all.yaml
+# z2n (8x8 dToF zones, interpolated + confidence channel, depth normalised by the fixed sensor range) + 900 NYUv2 frames, degraded by
+# the SAME dtof_l5_center chain (run with --preset dtof_l5_center). The 8x8 analogue of N3: does non-stair data help at 8x8 as it did at x8?
+# If z1n beats z2n, switch mode to interp and model.use_validity_channel to false (as in z1n_interp_sensor.yaml).
+data: {zones_input: {mode: interp_conf, grid: [8, 8], interp: bilinear, sigma_frac: 0.5, norm: sensor}}

@@ -29,23 +29,33 @@ def main() -> None:
     ap.add_argument("--ours", default="M0")
     ap.add_argument("--wave", default="1")
     ap.add_argument("--baselines", nargs="+", default=["DuCos_ft", "DEPTHOR_ft"])
+    ap.add_argument("--top", type=int, default=5, help="how many frames to list per kind")
+    ap.add_argument("--both", action="store_true", help="failure = EVERY baseline is worse than ours (gap = min over baselines), "
+                    "not just the worst one")
+    ap.add_argument("--ours-max", type=float, help="failure: keep only frames where ours AbsRel <= this")
     a = ap.parse_args()
     rows = [a.ours, a.wave, *a.baselines]
+    missing = [r for r in rows if not (Path(a.dir) / r / "test.json").exists()]
+    if missing:
+        raise SystemExit(f"no test.json in {a.dir} for rows {missing}")
     pf = {r: per_frame(Path(a.dir) / r / "test.json") for r in rows}
     gate = {k for k, v in json.loads(Path(a.gate).read_text()).items() if v["stair_like_strict"]}
     ids = sorted(set.intersection(*(set(v) for v in pf.values())) & gate)
     print(f"{len(ids)} strict stair-like frames present in all of {rows}")
     mean = {i: np.mean([pf[r][i] for r in rows]) for i in ids}
     med = np.median(list(mean.values()))
-    typical = sorted(ids, key=lambda i: abs(mean[i] - med))[:5]
-    gap = {i: max(pf[r][i] for r in a.baselines) - pf[a.ours][i] for i in ids}
-    fail = sorted(ids, key=lambda i: -gap[i])[:5]
+    typical = sorted(ids, key=lambda i: abs(mean[i] - med))[: a.top]
+    agg = min if a.both else max
+    gap = {i: agg(pf[r][i] for r in a.baselines) - pf[a.ours][i] for i in ids}
+    cand = [i for i in ids if a.ours_max is None or pf[a.ours][i] <= a.ours_max]
+    fail = sorted(cand, key=lambda i: -gap[i])[: a.top]
     for name, lst in (("typical", typical), ("failure", fail)):
         print(f"\n{name}:")
         for i in lst:
-            print(f"  {i:>6}  " + "  ".join(f"{r}={pf[r][i]:.4f}" for r in rows))
+            print(f"  {i:>6}  gap={gap[i]:+.4f}  " + "  ".join(f"{r}={pf[r][i]:.4f}" for r in rows))
     first_fail = next(i for i in fail if i != typical[0])  # two different frames
     print(f"\n--ids {typical[0]} {first_fail}")
+    print("\nall failure ids:", " ".join(fail))
 
 
 if __name__ == "__main__":
