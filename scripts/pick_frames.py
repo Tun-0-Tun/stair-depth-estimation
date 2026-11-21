@@ -33,14 +33,16 @@ def main() -> None:
     ap.add_argument("--both", action="store_true", help="failure = EVERY baseline is worse than ours (gap = min over baselines), "
                     "not just the worst one")
     ap.add_argument("--ours-max", type=float, help="failure: keep only frames where ours AbsRel <= this")
+    ap.add_argument("--bdir", help="folder of the --baselines rows when it differs from --dir (e.g. the zero-shot DuCos / DEPTHOR)")
     ap.add_argument("--no-gate", action="store_true", help="all test frames, not only strict stair-like ones")
     ap.add_argument("--ratio", action="store_true", help="rank by baseline/ours AbsRel instead of the difference")
     a = ap.parse_args()
     rows = [a.ours, a.wave, *a.baselines]
-    missing = [r for r in rows if not (Path(a.dir) / r / "test.json").exists()]
+    where = {r: Path(a.bdir or a.dir) if r in a.baselines else Path(a.dir) for r in rows}
+    missing = [f"{where[r]}/{r}" for r in rows if not (where[r] / r / "test.json").exists()]
     if missing:
-        raise SystemExit(f"no test.json in {a.dir} for rows {missing}")
-    pf = {r: per_frame(Path(a.dir) / r / "test.json") for r in rows}
+        raise SystemExit(f"no test.json for {missing}")
+    pf = {r: per_frame(where[r] / r / "test.json") for r in rows}
     ids = set.intersection(*(set(v) for v in pf.values()))
     if not a.no_gate:
         ids &= {k for k, v in json.loads(Path(a.gate).read_text()).items() if v["stair_like_strict"]}
